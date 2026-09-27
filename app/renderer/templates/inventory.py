@@ -23,19 +23,33 @@ def _draw_inventory(
     title_font = fonts.get("large")
     body_font = fonts.get("small")
 
-    y = draw_wrapped_text(draw, y, label_data.title.upper(), title_font, margin, max_width)
-    y += 6
+    # Split lines: Line 1 = Bold Big Title, Line 2+ = Small Text
+    raw_title = label_data.title or "INVENTORY ITEM"
+    lines = [line.strip() for line in raw_title.split("\n") if line.strip()]
+    main_title = lines[0].upper() if lines else "INVENTORY ITEM"
+    sub_lines = lines[1:]
+    if label_data.body and label_data.body not in lines:
+        sub_lines.append(label_data.body)
+
+    # 1. Line 1: Bold Large Text
+    y = draw_wrapped_text(draw, y, main_title, title_font, margin, max_width)
+    y += 4
+
+    # 2. Line 2+: Small Text
+    for sub in sub_lines:
+        y = draw_wrapped_text(draw, y, sub, body_font, margin, max_width)
+        y += 4
 
     shelf = label_data.metadata.get("shelf")
     if shelf:
         draw.text((margin, y), f"Shelf : {shelf}", fill="black", font=body_font)
-        y += text_size(draw, f"Shelf : {shelf}", body_font)[1] + 8
+        y += text_size(draw, f"Shelf : {shelf}", body_font)[1] + 6
 
     if label_data.quantity is not None:
         draw.text((margin, y), f"Qty : {label_data.quantity}", fill="black", font=body_font)
-        y += text_size(draw, f"Qty : {label_data.quantity}", body_font)[1] + 12
+        y += text_size(draw, f"Qty : {label_data.quantity}", body_font)[1] + 8
 
-    qr_value = label_data.qr_data or label_data.title
+    qr_value = label_data.qr_data or main_title
     y = _paste_qr(image, qr_value, y)
     draw_border(draw, image.width, image.height)
     return y
