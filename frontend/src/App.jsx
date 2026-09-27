@@ -282,96 +282,183 @@ function VoiceRecorder({ mode, onCapture, onBack, source = 'usb', onSourceChange
   const [state, setState] = useState('idle')
   const [error, setError] = useState('')
   const [transcript, setTranscript] = useState('')
+  const [duration, setDuration] = useState(0)
   const recorderRef = useRef(null)
   const streamRef = useRef(null)
   const chunksRef = useRef([])
-  const partialTimerRef = useRef(null)
-  const requestActiveRef = useRef(false)
+  const timerRef = useRef(null)
+  const pressStartTimeRef = useRef(0)
+  const isHoldingRef = useRef(false)
 
   const stopStream = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
   }
 
-  useEffect(() => () => { window.clearInterval(partialTimerRef.current); stopStream() }, [])
-
-  const beginRecording = async () => {
-    if (state !== 'idle') return
-    setError('')
+  const cancelRecording = useCallback(async () => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    stopStream()
     if (source === 'usb') {
       try {
-        setState('recording')
-        await fetch('/api/voice/start_record', { method: 'POST' })
-      } catch {
-        setError('Failed to start USB mic recording.')
-        setState('idle')
-      }
+        await fetch('/api/voice/cancel_record', { method: 'POST' })
+      } catch {}
+    }
+  }, [source])
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+      stopStream()
+      fetch('/api/voice/cancel_record', { method: 'POST' }).catch(() => {})
+    }
+  }, [])
+
+  useEffect(() => {
+    if (state === 'recording') {
+      setDuration(0)
+      timerRef.current = setInterval(() => {
+        setDuration((d) => d + 1)
+      }, 1000)
     } else {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        const recorder = new MediaRecorder(stream)
-        streamRef.current = stream
-        chunksRef.current = []
-        recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data) }
-        recorder.onstop = async () => {
-          window.clearInterval(partialTimerRef.current)
-          stopStream()
-          setState('transcribing')
-          try {
-            const audio = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
-            const form = new FormData()
-            form.append('audio', audio, 'recording.webm')
-            const response = await fetch('/voice/transcribe', { method: 'POST', body: form })
-            const data = await response.json()
-            if (!response.ok) throw new Error(data.detail || 'Transcription failed.')
-            setTranscript(data.text)
-            if (data.text) onCapture(data.text)
-            else setState('idle')
-          } catch (exc) {
-            setError(exc.message || 'Transcription failed.')
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, [state])
+
+  const startUsbRecording = async () => {
+    setError('')
+    setState('recording')
+    try {
+      const res = await fetch('/api/voice/start_record', { method: 'POST' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || 'Could not start USB microphone.')
+      }
+    } catch (err) {
+      setError(err.message || 'USB Mic failed to start.')
+      setState('idle')
+    }
+  }
+
+  const stopUsbRecording = async () => {
+    setState('transcribing')
+    try {
+      const res = await fetch('/api/voice/stop_record', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok || !data.text) {
+        throw new Error(data.detail || 'No speech was detected. Please try speaking closer to the webcam.')
+      }
+      setTranscript(data.text)
+      onCapture(data.text)
+    } catch (err) {
+      setError(err.message || 'USB Mic transcription failed.')
+      setState('idle')
+    }
+  }
+
+  const startPhoneRecording = async () => {
+    setError('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      streamRef.current = stream
+      chunksRef.current = []
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) chunksRef.current.push(event.data)
+      }
+      recorder.onstop = async () => {
+        stopStream()
+        setState('transcribing')
+        try {
+          const audio = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
+          const form = new FormData()
+          form.append('audio', audio, 'recording.webm')
+          const response = await fetch('/voice/transcribe', { method: 'POST', body: form })
+          const data = await response.json()
+          if (!response.ok) throw new Error(data.detail || 'Transcription failed.')
+          setTranscript(data.text)
+          if (data.text) onCapture(data.text)
+          else {
+            setError('No speech was detected. Please try again.')
             setState('idle')
           }
+        } catch (exc) {
+          setError(exc.message || 'Transcription failed.')
+          setState('idle')
         }
-        recorderRef.current = recorder
-        recorder.start(1000)
-        setState('recording')
-      } catch {
-        setError('Phone microphone access was denied or is unavailable.')
       }
+      recorderRef.current = recorder
+      recorder.start(500)
+      setState('recording')
+    } catch {
+      setError('Phone microphone access was denied or is unavailable.')
+      setState('idle')
     }
   }
 
-  const finishRecording = async () => {
+  const stopPhoneRecording = () => {
+    if (recorderRef.current?.state === 'recording') {
+      recorderRef.current.stop()
+    }
+  }
+
+  const handlePointerDown = (e) => {
+    if (state === 'transcribing') return
+    if (state === 'recording') {
+      // Tap while recording to stop
+      if (source === 'usb') stopUsbRecording()
+      else stopPhoneRecording()
+      return
+    }
+    pressStartTimeRef.current = Date.now()
+    isHoldingRef.current = true
+    if (source === 'usb') startUsbRecording()
+    else startPhoneRecording()
+  }
+
+  const handlePointerUp = () => {
+    if (state !== 'recording' || !isHoldingRef.current) return
+    const holdDuration = Date.now() - pressStartTimeRef.current
+    isHoldingRef.current = false
+    // If held for more than 400ms, treat as push-to-talk release
+    if (holdDuration > 400) {
+      if (source === 'usb') stopUsbRecording()
+      else stopPhoneRecording()
+    }
+    // If tapped (<400ms), remain recording until tapped again
+  }
+
+  const handleManualStop = () => {
     if (state !== 'recording') return
-    if (source === 'usb') {
-      setState('transcribing')
-      try {
-        const res = await fetch('/api/voice/stop_record', { method: 'POST' })
-        const data = await res.json()
-        if (!res.ok || !data.text) {
-          throw new Error(data.detail || 'No speech detected.')
-        }
-        setTranscript(data.text)
-        onCapture(data.text)
-      } catch (err) {
-        setError(err.message || 'USB Mic transcription failed.')
-        setState('idle')
-      }
-    } else {
-      if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
-    }
+    isHoldingRef.current = false
+    if (source === 'usb') stopUsbRecording()
+    else stopPhoneRecording()
   }
 
-  const label = state === 'recording' ? 'Recording...' : state === 'transcribing' ? 'Transcribing...' : 'Hold to Record'
+  const formatTimer = (secs) => {
+    const m = Math.floor(secs / 60)
+    const s = secs % 60
+    return `${m}:${s < 10 ? '0' : ''}${s}`
+  }
+
+  const label = state === 'recording'
+    ? `Stop (${formatTimer(duration)})`
+    : state === 'transcribing'
+    ? 'Transcribing…'
+    : 'Tap or Hold to Record'
+
   return (
     <div className="screen">
       <Bar>
-        <StatusDot color="var(--led-blue)" pulse />
+        <StatusDot color={state === 'recording' ? 'var(--led-red)' : 'var(--led-blue)'} pulse />
         <span className="bar-title status-title">{modeNames[mode]}</span>
         <div className="camera-source-tabs" style={{ marginLeft: 'auto', marginRight: '6px' }}>
           <button
             type="button"
             className={`camera-source-btn ${source === 'usb' ? 'active' : ''}`}
+            disabled={state === 'recording' || state === 'transcribing'}
             onClick={() => { onSourceChange?.('usb'); setError('') }}
           >
             USB Mic
@@ -379,34 +466,63 @@ function VoiceRecorder({ mode, onCapture, onBack, source = 'usb', onSourceChange
           <button
             type="button"
             className={`camera-source-btn ${source === 'phone' ? 'active' : ''}`}
+            disabled={state === 'recording' || state === 'transcribing'}
             onClick={() => { onSourceChange?.('phone'); setError('') }}
           >
             Phone
           </button>
         </div>
-        <IconButton label="Close" className="close-button" onClick={onBack}>Close</IconButton>
+        <IconButton label="Close" className="close-button" onClick={() => { cancelRecording(); onBack() }}>Close</IconButton>
       </Bar>
       <div className="center-body voice-body">
         <div className="voice-visual">
           <VoiceIcon />
           <div className={state === 'recording' ? 'wave waveform' : 'waveform'}>
-            {[6, 12, 20, 26, 20, 12, 6].map((height, index) => <span key={index} style={{ height: state === 'recording' ? height : 4 }} />)}
+            {[6, 12, 20, 26, 20, 12, 6].map((height, index) => (
+              <span
+                key={index}
+                style={{
+                  height: state === 'recording' ? height : 4,
+                  backgroundColor: state === 'recording' ? 'var(--led-red)' : 'var(--border)',
+                }}
+              />
+            ))}
           </div>
         </div>
-        <div className="live-transcript">
-          {transcript || (state === 'recording' ? (source === 'usb' ? 'Recording from USB Camera Mic…' : 'Listening…') : source === 'usb' ? 'USB Camera Mic ready' : 'Phone Mic ready')}
+        <div className="live-transcript" style={{ textAlign: 'center' }}>
+          {transcript || (state === 'recording'
+            ? (source === 'usb' ? `🔴 Recording USB Mic (${formatTimer(duration)})... Tap to stop` : `🔴 Recording Phone Mic (${formatTimer(duration)})... Tap to stop`)
+            : state === 'transcribing'
+            ? '⏳ Transcribing with Whisper...'
+            : (source === 'usb' ? 'Hikvision USB Mic ready · Tap or hold to speak' : 'Phone Mic ready · Tap or hold to speak'))}
         </div>
         {error && <span className="voice-error">{error}</span>}
-        <button
-          className={`primary-button record-button ${state === 'recording' ? 'holding' : ''}`}
-          disabled={state === 'transcribing'}
-          onPointerDown={beginRecording}
-          onPointerUp={finishRecording}
-          onPointerCancel={finishRecording}
-          onPointerLeave={finishRecording}
-        >
-          {label}
-        </button>
+        <div style={{ display: 'flex', gap: '8px', width: '100%', maxWidth: '240px' }}>
+          <button
+            type="button"
+            className={`primary-button record-button ${state === 'recording' ? 'holding' : ''}`}
+            disabled={state === 'transcribing'}
+            onPointerDown={handlePointerDown}
+            onPointerUp={handlePointerUp}
+            style={{
+              flex: 1,
+              backgroundColor: state === 'recording' ? '#ef4444' : undefined,
+              borderColor: state === 'recording' ? '#dc2626' : undefined,
+            }}
+          >
+            {label}
+          </button>
+          {state === 'recording' && (
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={handleManualStop}
+              style={{ padding: '0 12px', fontSize: 'var(--fs-xs)' }}
+            >
+              Done ✓
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
