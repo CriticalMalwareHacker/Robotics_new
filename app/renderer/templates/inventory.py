@@ -27,9 +27,12 @@ def _draw_inventory(
     raw_title = label_data.title or "INVENTORY ITEM"
     lines = [line.strip() for line in raw_title.split("\n") if line.strip()]
     main_title = lines[0].upper() if lines else "INVENTORY ITEM"
-    sub_lines = lines[1:]
-    if label_data.body and label_data.body not in lines:
-        sub_lines.append(label_data.body)
+    sub_lines = list(lines[1:])
+    if label_data.body:
+        for b_line in label_data.body.split("\n"):
+            b_line = b_line.strip()
+            if b_line and b_line not in sub_lines and b_line.upper() != main_title:
+                sub_lines.append(b_line)
 
     # 1. Line 1: Bold Large Text
     y = draw_wrapped_text(draw, y, main_title, title_font, margin, max_width)

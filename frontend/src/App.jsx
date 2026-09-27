@@ -241,7 +241,7 @@ function Capture({ mode, inputMethod, onCapture, onBack }) {
   if (!isText) return <VoiceRecorder mode={mode} onCapture={onCapture} onBack={onBack} />
   const finishRecording = () => { if (recordState !== 'holding') return; setRecordState('done'); window.setTimeout(() => onCapture(exampleStudyPrompt), 600) }
   return <div className="screen"><Bar><StatusDot color="var(--led-blue)" pulse /><span className="bar-title status-title">{modeNames[mode]}</span>{inputMethod === 'camera+voice' && <span className="step-copy">· step 2 of 2</span>}<IconButton label="Close" className="close-button" onClick={onBack}>×</IconButton></Bar>
-    {isText ? <div className="center-body text-body"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder={mode === 'inventory' ? "Line 1: Item Name (Bold Big)\nLine 2: Description / Qty (Small)" : "Describe what to label…"} /><button className="primary-button continue-button" disabled={!text.trim()} onClick={() => onCapture(text.trim())}>Continue</button></div>
+    {isText ? <div className="center-body text-body"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder={mode === 'inventory' ? "Line 1: Item Name (Bold Big)\nLine 2: Description / Qty (Small)" : mode === 'product' ? "Line 1: Product Name\nLine 2: Price (e.g. 499)\nLine 3: Details / Description" : mode === 'qr' ? "Enter URL or text for QR code..." : "Describe what to label…"} /><button className="primary-button continue-button" disabled={!text.trim()} onClick={() => onCapture(text.trim())}>Continue</button></div>
       : <div className="center-body voice-body"><div className="voice-visual"><svg width="26" height="30" viewBox="0 0 26 30" fill="none"><rect x="7" y="2" width="12" height="16" rx="6" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" /><path d="M3 15c0 5.5 4.5 9 10 9s10-3.5 10-9" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" strokeLinecap="round" /><line x1="13" y1="24" x2="13" y2="29" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" strokeLinecap="round" /></svg>
           <div className={recordState === 'holding' ? 'wave waveform' : 'waveform'}>{[6, 12, 20, 26, 20, 12, 6].map((height, index) => <span key={index} style={{ height: recordState === 'holding' ? height : 4 }} />)}</div></div>
         <button className={`primary-button record-button ${recordState}`} onPointerDown={() => setRecordState('holding')} onPointerUp={finishRecording} onPointerCancel={finishRecording} onPointerLeave={finishRecording}>{recordState === 'done' ? 'Captured' : recordState === 'holding' ? 'Recording…' : 'Hold to Record'}</button>
@@ -265,10 +265,26 @@ function Preview({ mode, onEdit, onPrint, generatedImage, isPrinting, printError
   const previewItem = previews[mode] || { title: 'PrintSensei Label', desc: '' }
   const transcriptLines = (transcript || '').split('\n').map((l) => l.trim()).filter(Boolean)
   const title = transcriptLines.length > 0 ? transcriptLines[0] : previewItem.title
-  const desc = transcriptLines.length > 1 ? transcriptLines.slice(1).join(' · ') : ''
+  
+  let priceStr = null
+  let bodyLines = []
+  if (mode === 'product') {
+    for (let i = 1; i < transcriptLines.length; i++) {
+      const line = transcriptLines[i]
+      const priceMatch = line.match(/^(?:price\s*[:=]?\s*|rs\.?\s*|₹\s*|\$\s*)?(\d+(?:\.\d+)?)$/i)
+      if (priceMatch && priceStr === null) {
+        priceStr = priceMatch[1]
+      } else {
+        bodyLines.push(line)
+      }
+    }
+  } else {
+    bodyLines = transcriptLines.length > 1 ? transcriptLines.slice(1) : []
+  }
+  const desc = bodyLines.join(' · ')
   const date = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase()
   if (generatedImage) return <div className="screen"><Bar><span className="bar-title">Study image</span><span className="bar-meta">Ready</span></Bar><div className="center-body preview-body"><img className="generated-image" src={generatedImage} alt="Generated study diagram" /><div className="preview-actions"><button className="ghost-button" disabled={isPrinting} onClick={onEdit}>Edit</button><button className="primary-button" disabled={isPrinting} onClick={onPrint}>{isPrinting ? 'Sending…' : 'Print'}</button></div>{printError && <span className="voice-error">{printError}</span>}</div></div>
-  return <div className="screen"><Bar><span className="bar-title">Preview</span><span className="bar-meta">{modeNames[mode]}</span></Bar><div className="center-body preview-body"><div className="label-preview"><div className="label-main"><div className="label-copy"><div className="label-title">{title}</div>{desc && <div className="label-desc">{desc}</div>}</div><div className="qr-box"><QrIcon /></div></div><div className="label-footer mono">PRINTSENSEI · {date} · 58MM</div></div><div className="preview-actions"><button className="ghost-button" disabled={isPrinting} onClick={onEdit}>Edit</button><button className="primary-button" disabled={isPrinting} onClick={onPrint}>{isPrinting ? 'Sending…' : 'Print'}</button></div>{printError && <span className="voice-error">{printError}</span>}</div></div>
+  return <div className="screen"><Bar><span className="bar-title">Preview</span><span className="bar-meta">{modeNames[mode]}</span></Bar><div className="center-body preview-body"><div className="label-preview"><div className="label-main"><div className="label-copy"><div className="label-title">{title}</div>{priceStr && <div className="label-price" style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '12px', marginTop: '2px' }}>Rs {priceStr}</div>}{desc && <div className="label-desc">{desc}</div>}</div><div className="qr-box"><QrIcon /></div></div><div className="label-footer mono">PRINTSENSEI · {date} · 58MM</div></div><div className="preview-actions"><button className="ghost-button" disabled={isPrinting} onClick={onEdit}>Edit</button><button className="primary-button" disabled={isPrinting} onClick={onPrint}>{isPrinting ? 'Sending…' : 'Print'}</button></div>{printError && <span className="voice-error">{printError}</span>}</div></div>
 }
 
 function Printing({ onDone }) {
@@ -428,9 +444,9 @@ export default function App() {
           })
         } else {
           const currentMode = reprintItem.mode || mode
-          const previewItem = previews[currentMode] || { title: 'PrintSensei Label', desc: 'Ready to print' }
+          const previewItem = previews[currentMode] || { title: 'PrintSensei Label', desc: '' }
           const title = reprintItem.title || previewItem.title
-          const desc = reprintItem.desc || previewItem.desc
+          const desc = reprintItem.desc || ''
           const qrPayload = currentMode === 'qr' ? title : (title || 'https://printsensei.local')
           
           const renderRes = await fetch('/render', {
@@ -475,10 +491,27 @@ export default function App() {
         })
       } else {
         const currentMode = mode
-        const previewItem = previews[currentMode] || { title: 'PrintSensei Label', desc: 'Ready to print' }
+        const previewItem = previews[currentMode] || { title: 'PrintSensei Label', desc: '' }
         const transcriptLines = (voiceTranscript || '').split('\n').map((l) => l.trim()).filter(Boolean)
         const title = transcriptLines.length > 0 ? transcriptLines[0] : (voiceTranscript || previewItem.title)
-        const desc = transcriptLines.length > 1 ? transcriptLines.slice(1).join('\n') : ''
+        
+        let price = null
+        let bodyLines = []
+        if (currentMode === 'product') {
+          for (let i = 1; i < transcriptLines.length; i++) {
+            const line = transcriptLines[i]
+            const priceMatch = line.match(/^(?:price\s*[:=]?\s*|rs\.?\s*|₹\s*|\$\s*)?(\d+(?:\.\d+)?)$/i)
+            if (priceMatch && price === null) {
+              price = parseFloat(priceMatch[1])
+            } else {
+              bodyLines.push(line)
+            }
+          }
+        } else {
+          bodyLines = transcriptLines.length > 1 ? transcriptLines.slice(1) : []
+        }
+        
+        const desc = bodyLines.join('\n')
         itemTitle = title
         itemDesc = desc
         itemMode = currentMode
@@ -491,6 +524,7 @@ export default function App() {
             title: title,
             subtitle: modeNames[currentMode] || 'PrintSensei',
             body: desc,
+            price: price,
             date: new Date().toISOString().split('T')[0],
             qr_data: qrPayload,
             template: currentMode,
