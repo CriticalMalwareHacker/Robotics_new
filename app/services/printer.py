@@ -140,73 +140,86 @@ def _find_usb_printer():
     return None
 
 
+import threading
+
+_PRINTER_LOCK = threading.Lock()
+
+
 def _write_pyusb(payload: bytes) -> tuple[bool, str]:
-    """Write binary ESC/POS payload via direct PyUSB bulk transfer."""
-    try:
-        import usb.core
-        import usb.util
-    except ImportError:
-        return False, "pyusb module not installed"
-
-    dev = _find_usb_printer()
-    if dev is None:
-        return False, "USB thermal printer not found"
-
-    def _attempt_stream(target_dev) -> tuple[bool, str]:
-        # Detach kernel usblp if active
+    """Write binary ESC/POS payload via direct PyUSB bulk transfer with concurrency lock."""
+    with _PRINTER_LOCK:
         try:
-            if target_dev.is_kernel_driver_active(0):
-                target_dev.detach_kernel_driver(0)
-        except Exception:
-            pass
+            import usb.core
+            import usb.util
+        except ImportError:
+            return False, "pyusb module not installed"
 
-        try:
-            target_dev.set_configuration()
-        except Exception:
-            pass
-
-        cfg = target_dev.get_active_configuration()
-        intf = cfg[(0, 0)]
-        ep_out = None
-        for ep in intf:
-            if usb.util.endpoint_direction(ep.bEndpointAddress) == usb.util.ENDPOINT_OUT:
-                ep_out = ep
-                break
-
-        if ep_out is None:
-            return False, "Could not locate USB OUT endpoint"
-
-        try:
-            target_dev.clear_halt(ep_out.bEndpointAddress)
-        except Exception:
-            pass
-
-        # Stream payload in chunks of 512 bytes with pacing to avoid hardware FIFO overflow
-        chunk_size = 512
-        total_written = 0
-        total_len = len(payload)
-        while total_written < total_len:
-            chunk = payload[total_written : total_written + chunk_size]
-            written = ep_out.write(chunk, timeout=3000)
-            total_written += written
-            if total_written < total_len:
-                time.sleep(0.002)
-
-        return True, f"Printed {total_written} bytes via PyUSB direct transfer"
-
-    try:
-        return _attempt_stream(dev)
-    except Exception as first_err:
-        logger.warning("First PyUSB attempt failed (%s), resetting device...", first_err)
-        # Attempt USB reset and retry once
-        _reset_usb_device(dev)
         dev = _find_usb_printer()
         if dev is None:
-            return False, f"PyUSB retry failed: device lost after reset ({first_err})"
+            return False, "USB thermal printer not found"
+
+        def _attempt_stream(target_dev) -> tuple[bool, str]:
+            # Detach kernel usblp if active
+            try:
+                if target_dev.is_kernel_driver_active(0):
+                    target_dev.detach_kernel_driver(0)
+            except Exception:
+                pass
+
+            try:
+                target_dev.set_configuration()
+            except Exception:
+                pass
+
+            cfg = target_dev.get_active_configuration()
+            intf = cfg[(0, 0)]
+            ep_out = None
+            for ep in intf:
+                if usb.util.endpoint_direction(ep.bEndpointAddress) == usb.util.ENDPOINT_OUT:
+                    ep_out = ep
+                    break
+
+            if ep_out is None:
+                return False, "Could not locate USB OUT endpoint"
+
+            try:
+                target_dev.clear_halt(ep_out.bEndpointAddress)
+            except Exception:
+                pass
+
+            # Pre-initialize printer parser state
+            try:
+                ep_out.write(b"\x1b\x40", timeout=1000)
+                time.sleep(0.02)
+            except Exception:
+                pass
+
+            # Stream payload in chunks of 512 bytes with pacing to avoid hardware FIFO overflow
+            chunk_size = 512
+            total_written = 0
+            total_len = len(payload)
+            while total_written < total_len:
+                chunk = payload[total_written : total_written + chunk_size]
+                written = ep_out.write(chunk, timeout=3000)
+                total_written += written
+                if total_written < total_len:
+                    time.sleep(0.002)
+
+            return True, f"Printed {total_written} bytes via PyUSB direct transfer"
+
         try:
             return _attempt_stream(dev)
-        except Exception as retry_err:
-            return False, f"PyUSB stream failed: {retry_err}"
+        except Exception as first_err:
+            logger.warning("First PyUSB attempt failed (%s), resetting device...", first_err)
+            _reset_usb_device(dev)
+            time.sleep(0.5)
+            dev = _find_usb_printer()
+            if dev is None:
+                return False, f"PyUSB retry failed: device lost after reset ({first_err})"
+            try:
+                return _attempt_stream(dev)
+            except Exception as retry_err:
+                return False, f"PyUSB stream failed: {retry_err}"
 
 
 def _write_direct_device_node(device_path: str, payload: bytes) -> tuple[bool, str]:

@@ -17,19 +17,25 @@ def _draw_qr(
     fonts: FontManager,
     label_data: LabelData,
 ) -> int:
-    margin = 18
+    margin = 16
     y = margin
-    data = label_data.qr_data or label_data.body or label_data.title
+    data = label_data.qr_data or label_data.body or label_data.title or "https://printsensei.local"
 
-    y = draw_centered_text(draw, y, label_data.title or "Scan Me", fonts.get("medium"), image.width)
+    # 1. Render QR Code prominently at the top (no text above)
+    qr_size = 144
+    qr_img = generate_qr_image(data, size=qr_size)
+    y = center_image(image, qr_img, y)
     y += 12
-    y = center_image(image, generate_qr_image(data, size=132), y)
-    y += 10
-    return draw_wrapped_text(
-        draw,
-        y,
-        data,
-        fonts.get("tiny"),
-        margin,
-        image.width - (margin * 2),
-    )
+
+    # 2. Only print caption below the QR code
+    caption = label_data.title or label_data.body or data
+    if caption:
+        y = draw_wrapped_text(
+            draw,
+            y,
+            caption,
+            fonts.get("small"),
+            margin,
+            image.width - (margin * 2),
+        )
+    return y
