@@ -12,7 +12,7 @@ class RenderRequest(BaseModel):
     body: str | None = None
     quantity: int | None = None
     price: float | None = None
-    date: date_type | None = None
+    date: str | date_type | None = None
     qr_data: str | None = None
     template: str | None = None
     image_path: str | None = None

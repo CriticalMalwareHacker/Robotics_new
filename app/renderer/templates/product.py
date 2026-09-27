@@ -28,7 +28,8 @@ def _draw_product(
 
     if label_data.date is not None:
         y += 8
-        y = draw_centered_text(draw, y, label_data.date.isoformat(), fonts.get("tiny"), image.width)
+        date_str = label_data.date.isoformat() if hasattr(label_data.date, "isoformat") else str(label_data.date)
+        y = draw_centered_text(draw, y, date_str, fonts.get("tiny"), image.width)
 
     if label_data.body:
         y += 8

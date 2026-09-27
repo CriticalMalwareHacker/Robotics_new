@@ -387,6 +387,16 @@ export default function App() {
     }
   }
 
+  const extractErrorMessage = (data, fallback = 'Operation failed.') => {
+    if (!data) return fallback
+    if (typeof data.detail === 'string') return data.detail
+    if (Array.isArray(data.detail) && data.detail.length > 0) {
+      return data.detail[0]?.msg || fallback
+    }
+    if (data.message) return data.message
+    return fallback
+  }
+
   const printCurrentLabel = async (reprintItem = null) => {
     setPrintError('')
     setIsPrinting(true)
@@ -420,7 +430,7 @@ export default function App() {
           const previewItem = previews[currentMode] || { title: 'PrintSensei Label', desc: 'Ready to print' }
           const title = reprintItem.title || previewItem.title
           const desc = reprintItem.desc || previewItem.desc
-          const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase()
+          const qrPayload = currentMode === 'qr' ? title : (title || 'https://printsensei.local')
           
           const renderRes = await fetch('/render', {
             method: 'POST',
@@ -429,14 +439,14 @@ export default function App() {
               title: title,
               subtitle: modeNames[currentMode] || 'PrintSensei',
               body: desc,
-              date: dateStr,
-              qr_data: 'http://printsensei.local',
+              date: new Date().toISOString().split('T')[0],
+              qr_data: qrPayload,
               template: currentMode,
               label_type: currentMode,
             }),
           })
           const renderData = await renderRes.json()
-          if (!renderRes.ok) throw new Error(renderData.detail || 'Could not render label.')
+          if (!renderRes.ok) throw new Error(extractErrorMessage(renderData, 'Could not render label.'))
           targetImageUrl = `/${renderData.file}`
           const imageResponse = await fetch(targetImageUrl)
           if (!imageResponse.ok) throw new Error('Could not read the rendered label image.')
@@ -470,7 +480,7 @@ export default function App() {
         itemTitle = title
         itemDesc = desc
         itemMode = currentMode
-        const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase()
+        const qrPayload = currentMode === 'qr' ? title : (title || 'https://printsensei.local')
         
         const renderRes = await fetch('/render', {
           method: 'POST',
@@ -479,14 +489,14 @@ export default function App() {
             title: title,
             subtitle: modeNames[currentMode] || 'PrintSensei',
             body: desc,
-            date: dateStr,
-            qr_data: 'http://printsensei.local',
+            date: new Date().toISOString().split('T')[0],
+            qr_data: qrPayload,
             template: currentMode,
             label_type: currentMode,
           }),
         })
         const renderData = await renderRes.json()
-        if (!renderRes.ok) throw new Error(renderData.detail || 'Could not render label.')
+        if (!renderRes.ok) throw new Error(extractErrorMessage(renderData, 'Could not render label.'))
         targetImageUrl = `/${renderData.file}`
         const imageResponse = await fetch(targetImageUrl)
         if (!imageResponse.ok) throw new Error('Could not read the rendered label image.')
@@ -514,7 +524,7 @@ export default function App() {
         }),
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.detail || 'The printer rejected the print job.')
+      if (!response.ok) throw new Error(extractErrorMessage(data, 'The printer rejected the print job.'))
 
       fetchHistory()
       go('printing')
