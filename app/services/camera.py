@@ -1,4 +1,4 @@
-"""Hardware USB Camera service for PrintSensei (Hikvision 1080p and V4L2 USB webcams)."""
+"""Hardware USB Camera service with active session management and auto-release."""
 
 from __future__ import annotations
 
@@ -13,111 +13,113 @@ import cv2
 
 logger = logging.getLogger(__name__)
 
-_CAMERA_LOCK = threading.Lock()
-_ACTIVE_CAPTURE: cv2.VideoCapture | None = None
-_LAST_FRAME_JPEG: bytes | None = None
-_STREAM_CLIENTS = 0
+class CameraManager:
+    """Manages USB camera capture session with auto-shutdown on inactivity."""
 
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._cap: cv2.VideoCapture | None = None
+        self._latest_jpeg: bytes | None = None
+        self._latest_frame_bgr: any = None
+        self._last_access: float = 0
+        self._running: bool = False
+        self._worker_thread: threading.Thread | None = None
 
-def get_camera_device_index() -> int:
-    """Find the best available V4L2 video capture device index."""
-    # Check /dev/video0, /dev/video1, etc.
-    for index in [0, 1, 2]:
-        if Path(f"/dev/video{index}").exists():
-            return index
-    return 0
+    def _get_device_index(self) -> int:
+        for idx in [0, 1, 2]:
+            if Path(f"/dev/video{idx}").exists():
+                return idx
+        return 0
 
-
-def capture_usb_frame(device_index: int | None = None, width: int = 1280, height: int = 720) -> tuple[bool, str, str]:
-    """Capture a single high-quality frame from the USB camera and return as base64 data URI."""
-    if device_index is None:
-        device_index = get_camera_device_index()
-
-    with _CAMERA_LOCK:
-        cap = cv2.VideoCapture(device_index, cv2.CAP_V4L2)
+    def _worker(self):
+        logger.info("Starting background camera worker (LED turns BLUE)...")
+        dev_idx = self._get_device_index()
+        cap = cv2.VideoCapture(dev_idx, cv2.CAP_V4L2)
         if not cap.isOpened():
-            cap = cv2.VideoCapture(device_index)
-
-        if not cap.isOpened():
-            return False, "", "Could not open USB camera device."
-
-        try:
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-
-            # Let sensor auto-exposure and white balance settle
-            frame = None
-            for _ in range(4):
-                ret, temp_frame = cap.read()
-                if ret and temp_frame is not None:
-                    frame = temp_frame
-                time.sleep(0.04)
-
-            if frame is None or frame.size == 0:
-                return False, "", "Failed to grab frame from USB camera."
-
-            # Encode as JPEG
-            success, encoded_img = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
-            if not success:
-                return False, "", "Failed to encode camera image."
-
-            jpeg_bytes = encoded_img.tobytes()
-            base64_str = f"data:image/jpeg;base64,{base64.b64encode(jpeg_bytes).decode('utf-8')}"
-            return True, base64_str, "Photo captured successfully."
-        finally:
-            cap.release()
-
-
-async def generate_mjpeg_stream(request: Any = None) -> Any:
-    """Generate low-latency MJPEG video stream chunks and release camera as soon as disconnected."""
-    import asyncio
-    device_index = get_camera_device_index()
-    
-    with _CAMERA_LOCK:
-        cap = cv2.VideoCapture(device_index, cv2.CAP_V4L2)
-        if not cap.isOpened():
-            cap = cv2.VideoCapture(device_index)
+            cap = cv2.VideoCapture(dev_idx)
 
         if not cap.isOpened():
-            logger.warning("Could not open camera for MJPEG stream.")
+            logger.error("Could not open USB camera.")
+            self._running = False
             return
 
-        try:
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            cap.set(cv2.CAP_PROP_FPS, 15)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap.set(cv2.CAP_PROP_FPS, 30)
+        self._cap = cap
 
-            while True:
-                if request is not None and await request.is_disconnected():
+        try:
+            while self._running:
+                # If no client asked for a frame in >3.0 seconds, auto-release camera to turn LED RED
+                if time.time() - self._last_access > 3.0:
+                    logger.info("Camera inactive for >3s, shutting down worker (LED turns RED)...")
                     break
 
                 ret, frame = cap.read()
                 if not ret or frame is None:
-                    await asyncio.sleep(0.05)
+                    time.sleep(0.03)
                     continue
 
-                success, jpeg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
-                if not success:
-                    continue
+                success, jpeg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                if success:
+                    with self._lock:
+                        self._latest_jpeg = jpeg.tobytes()
+                        self._latest_frame_bgr = frame.copy()
 
-                frame_bytes = jpeg.tobytes()
-                yield (
-                    b"--frame\r\n"
-                    b"Content-Type: image/jpeg\r\n"
-                    b"Content-Length: " + str(len(frame_bytes)).encode() + b"\r\n\r\n" +
-                    frame_bytes + b"\r\n"
-                )
-                await asyncio.sleep(0.06)  # ~15 fps
-        except (GeneratorExit, asyncio.CancelledError, Exception) as exc:
-            logger.info(f"Camera stream disconnected: {exc}")
+                time.sleep(0.03)
         finally:
             cap.release()
-            logger.info("USB camera device released; LED turns RED.")
+            self._cap = None
+            self._running = False
+            logger.info("Camera released successfully (LED is RED).")
+
+    def ensure_started(self):
+        self._last_access = time.time()
+        with self._lock:
+            if not self._running or self._worker_thread is None or not self._worker_thread.is_alive():
+                self._running = True
+                self._worker_thread = threading.Thread(target=self._worker, daemon=True)
+                self._worker_thread.start()
+
+    def get_latest_jpeg(self) -> bytes | None:
+        self.ensure_started()
+        # Wait up to 1.5s for the first frame if just started
+        for _ in range(15):
+            with self._lock:
+                if self._latest_jpeg is not None:
+                    return self._latest_jpeg
+            time.sleep(0.08)
+        return self._latest_jpeg
+
+    def capture_photo(self) -> tuple[bool, str, str]:
+        self.ensure_started()
+        # Wait for fresh frame
+        for _ in range(12):
+            with self._lock:
+                if self._latest_jpeg is not None:
+                    base64_str = f"data:image/jpeg;base64,{base64.b64encode(self._latest_jpeg).decode('utf-8')}"
+                    # Mark access time to start countdown to turn off LED
+                    self._last_access = time.time() - 2.0  # will release in ~1s
+                    return True, base64_str, "Photo captured successfully."
+            time.sleep(0.08)
+        return False, "", "Could not capture image from USB camera."
+
+    def release_now(self):
+        self._running = False
+        with self._lock:
+            if self._cap is not None:
+                try:
+                    self._cap.release()
+                except Exception:
+                    pass
+                self._cap = None
+
+
+camera_manager = CameraManager()
 
 
 def get_camera_status() -> dict[str, str | bool | int]:
-    """Check whether a USB camera is connected and functional."""
-    idx = get_camera_device_index()
+    idx = camera_manager._get_device_index()
     exists = Path(f"/dev/video{idx}").exists()
     return {
         "available": exists,

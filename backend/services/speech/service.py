@@ -12,12 +12,11 @@ class SpeechToTextService:
         self.model = WhisperModel("tiny", device="cpu", compute_type="int8")
 
     def transcribe(self, audio_path: Path) -> tuple[str, str | None]:
+        # First try with vad_filter disabled for sensitive USB mics
         segments, info = self.model.transcribe(
             str(audio_path),
             beam_size=1,
-            vad_filter=True,
-            # Translate any detected language into English instead of returning
-            # the original-language transcript.
+            vad_filter=False,
             task="translate",
         )
         text = " ".join(segment.text.strip() for segment in segments).strip()

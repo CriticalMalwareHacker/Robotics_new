@@ -107,24 +107,55 @@ function InputMethod({ mode, onSelect, onBack }) {
   </div>
 }
 
-function CameraCapture({ onCaptured, onBack }) {
-  const [source, setSource] = useState('usb') // 'usb' (Hikvision 1080p) or 'phone'
+function CameraCapture({ onCaptured, onBack, source = 'usb', onSourceChange }) {
   const [captured, setCaptured] = useState(false)
+  const [capturedPhoto, setCapturedPhoto] = useState(null)
   const [capturing, setCapturing] = useState(false)
   const [cameraError, setCameraError] = useState('')
-  const [streamActive, setStreamActive] = useState(true)
+  const [frameSrc, setFrameSrc] = useState('/api/camera/frame')
   const videoRef = useRef(null)
   const streamRef = useRef(null)
+  const isMountedRef = useRef(true)
 
   const stopPhoneCamera = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
   }
 
-  // Lifecycle control: Ensure camera stream drops immediately when leaving or switching
+  const releaseUsbCamera = () => {
+    fetch('/api/camera/release', { method: 'POST' }).catch(() => {})
+  }
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      stopPhoneCamera()
+      releaseUsbCamera()
+    }
+  }, [])
+
+  // USB Camera live frame updater loop
+  useEffect(() => {
+    if (source !== 'usb' || captured) return undefined
+    let timer = null
+    let active = true
+
+    const loadNextFrame = () => {
+      if (!active || captured) return
+      setFrameSrc(`/api/camera/frame?t=${Date.now()}`)
+    }
+
+    timer = window.setInterval(loadNextFrame, 120) // ~8-10 FPS live feed
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [source, captured])
+
   useEffect(() => {
     if (source === 'phone') {
-      setStreamActive(false)
+      releaseUsbCamera()
       let active = true
       setCameraError('')
       navigator.mediaDevices?.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
@@ -138,14 +169,12 @@ function CameraCapture({ onCaptured, onBack }) {
     } else {
       stopPhoneCamera()
       setCameraError('')
-      setStreamActive(true)
-      return () => { setStreamActive(false) }
     }
   }, [source])
 
   const handleClose = () => {
-    setStreamActive(false)
     stopPhoneCamera()
+    releaseUsbCamera()
     onBack()
   }
 
@@ -156,19 +185,20 @@ function CameraCapture({ onCaptured, onBack }) {
 
     if (source === 'usb') {
       try {
-        // Drop preview stream before full capture so device lock is clean
-        setStreamActive(false)
         const res = await fetch('/api/camera/capture', { method: 'POST' })
         const data = await res.json()
         if (!res.ok || !data.image) {
           throw new Error(data.detail || 'Failed to capture frame from USB webcam.')
         }
         setCaptured(true)
-        window.setTimeout(() => onCaptured(data.image), 400)
+        setCapturedPhoto(data.image)
+        window.setTimeout(() => {
+          releaseUsbCamera()
+          onCaptured(data.image)
+        }, 800)
       } catch (err) {
         setCameraError(err.message || 'USB camera capture failed.')
         setCapturing(false)
-        setStreamActive(true)
       }
     } else {
       const video = videoRef.current
@@ -182,8 +212,9 @@ function CameraCapture({ onCaptured, onBack }) {
       canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
       const image = canvas.toDataURL('image/jpeg', 0.92)
       setCaptured(true)
+      setCapturedPhoto(image)
       stopPhoneCamera()
-      window.setTimeout(() => onCaptured(image), 400)
+      window.setTimeout(() => onCaptured(image), 800)
     }
   }
 
@@ -196,14 +227,14 @@ function CameraCapture({ onCaptured, onBack }) {
           <button
             type="button"
             className={`camera-source-btn ${source === 'usb' ? 'active' : ''}`}
-            onClick={() => { setSource('usb'); setCameraError('') }}
+            onClick={() => { onSourceChange?.('usb'); setCameraError('') }}
           >
             USB Cam
           </button>
           <button
             type="button"
             className={`camera-source-btn ${source === 'phone' ? 'active' : ''}`}
-            onClick={() => { setSource('phone'); setCameraError('') }}
+            onClick={() => { onSourceChange?.('phone'); setCameraError('') }}
           >
             Phone
           </button>
@@ -212,19 +243,17 @@ function CameraCapture({ onCaptured, onBack }) {
       </Bar>
       <div className="center-body camera-body">
         <div className="camera-frame">
-          {source === 'usb' ? (
-            streamActive && !captured ? (
-              <img
-                className="camera-stream-img"
-                src={`/api/camera/stream?t=${Date.now()}`}
-                alt="Hikvision USB Stream"
-                onError={() => setCameraError('USB Webcam stream offline or busy.')}
-              />
-            ) : (
-              <div style={{ color: 'var(--dim)', fontSize: 'var(--fs-xs)' }}>
-                {captured ? 'Photo Saved ✓' : 'Camera Standby'}
-              </div>
-            )
+          {captured && capturedPhoto ? (
+            <img className="camera-video" src={capturedPhoto} alt="Captured photo" style={{ transform: 'none' }} />
+          ) : source === 'usb' ? (
+            <img
+              className="camera-video"
+              src={frameSrc}
+              alt="Hikvision Live Viewfinder"
+              style={{ transform: 'none' }}
+              onError={() => setCameraError('Initializing USB Camera…')}
+              onLoad={() => setCameraError('')}
+            />
           ) : (
             <video ref={videoRef} className="camera-video" autoPlay playsInline muted />
           )}
@@ -233,7 +262,7 @@ function CameraCapture({ onCaptured, onBack }) {
           <i className="corner bottom left" />
           <i className="corner bottom right" />
           <span className={captured ? 'capture-done' : 'camera-prompt'}>
-            {cameraError || (captured ? 'Captured ✓' : source === 'usb' ? 'Hikvision USB 1080p' : 'Aim at subject')}
+            {cameraError || (captured ? 'Captured ✓' : source === 'usb' ? 'Hikvision USB Live' : 'Aim at subject')}
           </span>
         </div>
         <button
@@ -249,7 +278,7 @@ function CameraCapture({ onCaptured, onBack }) {
   )
 }
 
-function VoiceRecorder({ mode, onCapture, onBack }) {
+function VoiceRecorder({ mode, onCapture, onBack, source = 'usb', onSourceChange }) {
   const [state, setState] = useState('idle')
   const [error, setError] = useState('')
   const [transcript, setTranscript] = useState('')
@@ -266,71 +295,132 @@ function VoiceRecorder({ mode, onCapture, onBack }) {
 
   useEffect(() => () => { window.clearInterval(partialTimerRef.current); stopStream() }, [])
 
-  const transcribeCurrentAudio = async (final = false) => {
-    if (!chunksRef.current.length || requestActiveRef.current) return transcript
-    requestActiveRef.current = true
-    try {
-      const audio = new Blob(chunksRef.current, { type: recorderRef.current?.mimeType || 'audio/webm' })
-      const form = new FormData()
-      form.append('audio', audio, 'recording.webm')
-      const response = await fetch('/voice/transcribe', { method: 'POST', body: form })
-      const body = await response.text()
-      let data = {}
-      try { data = body ? JSON.parse(body) : {} } catch { throw new Error('Voice server returned an invalid response.') }
-      if (!response.ok) throw new Error(data.detail || `Transcription failed (${response.status}).`)
-      setTranscript(data.text)
-      return data.text
-    } catch (exception) {
-      if (final) setError(exception.message || 'Transcription failed.')
-      return ''
-    } finally {
-      requestActiveRef.current = false
-    }
-  }
-
   const beginRecording = async () => {
     if (state !== 'idle') return
     setError('')
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
-      streamRef.current = stream
-      chunksRef.current = []
-      recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data) }
-      recorder.onstop = async () => {
-        window.clearInterval(partialTimerRef.current)
-        stopStream()
-        setState('transcribing')
-        const text = await transcribeCurrentAudio(true)
-        if (text) onCapture(text)
-        else setState('idle')
+    if (source === 'usb') {
+      try {
+        setState('recording')
+        await fetch('/api/voice/start_record', { method: 'POST' })
+      } catch {
+        setError('Failed to start USB mic recording.')
+        setState('idle')
       }
-      recorderRef.current = recorder
-      recorder.start(1000)
-      partialTimerRef.current = window.setInterval(() => { transcribeCurrentAudio() }, 2500)
-      setState('recording')
-    } catch {
-      setError('Microphone access was denied or is unavailable.')
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const recorder = new MediaRecorder(stream)
+        streamRef.current = stream
+        chunksRef.current = []
+        recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data) }
+        recorder.onstop = async () => {
+          window.clearInterval(partialTimerRef.current)
+          stopStream()
+          setState('transcribing')
+          try {
+            const audio = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
+            const form = new FormData()
+            form.append('audio', audio, 'recording.webm')
+            const response = await fetch('/voice/transcribe', { method: 'POST', body: form })
+            const data = await response.json()
+            if (!response.ok) throw new Error(data.detail || 'Transcription failed.')
+            setTranscript(data.text)
+            if (data.text) onCapture(data.text)
+            else setState('idle')
+          } catch (exc) {
+            setError(exc.message || 'Transcription failed.')
+            setState('idle')
+          }
+        }
+        recorderRef.current = recorder
+        recorder.start(1000)
+        setState('recording')
+      } catch {
+        setError('Phone microphone access was denied or is unavailable.')
+      }
     }
   }
 
-  const finishRecording = () => {
-    if (state === 'recording' && recorderRef.current?.state === 'recording') recorderRef.current.stop()
+  const finishRecording = async () => {
+    if (state !== 'recording') return
+    if (source === 'usb') {
+      setState('transcribing')
+      try {
+        const res = await fetch('/api/voice/stop_record', { method: 'POST' })
+        const data = await res.json()
+        if (!res.ok || !data.text) {
+          throw new Error(data.detail || 'No speech detected.')
+        }
+        setTranscript(data.text)
+        onCapture(data.text)
+      } catch (err) {
+        setError(err.message || 'USB Mic transcription failed.')
+        setState('idle')
+      }
+    } else {
+      if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
+    }
   }
 
   const label = state === 'recording' ? 'Recording...' : state === 'transcribing' ? 'Transcribing...' : 'Hold to Record'
-  return <div className="screen"><Bar><StatusDot color="var(--led-blue)" pulse /><span className="bar-title status-title">{modeNames[mode]}</span><IconButton label="Close" className="close-button" onClick={onBack}>Close</IconButton></Bar><div className="center-body voice-body"><div className="voice-visual"><VoiceIcon /><div className={state === 'recording' ? 'wave waveform' : 'waveform'}>{[6, 12, 20, 26, 20, 12, 6].map((height, index) => <span key={index} style={{ height: state === 'recording' ? height : 4 }} />)}</div></div><div className="live-transcript">{transcript || (state === 'recording' ? 'Listening...' : 'Your words will appear here.')}</div>{error && <span className="voice-error">{error}</span>}<button className={`primary-button record-button ${state === 'recording' ? 'holding' : ''}`} disabled={state === 'transcribing'} onPointerDown={beginRecording} onPointerUp={finishRecording} onPointerCancel={finishRecording} onPointerLeave={finishRecording}>{label}</button></div></div>
+  return (
+    <div className="screen">
+      <Bar>
+        <StatusDot color="var(--led-blue)" pulse />
+        <span className="bar-title status-title">{modeNames[mode]}</span>
+        <div className="camera-source-tabs" style={{ marginLeft: 'auto', marginRight: '6px' }}>
+          <button
+            type="button"
+            className={`camera-source-btn ${source === 'usb' ? 'active' : ''}`}
+            onClick={() => { onSourceChange?.('usb'); setError('') }}
+          >
+            USB Mic
+          </button>
+          <button
+            type="button"
+            className={`camera-source-btn ${source === 'phone' ? 'active' : ''}`}
+            onClick={() => { onSourceChange?.('phone'); setError('') }}
+          >
+            Phone
+          </button>
+        </div>
+        <IconButton label="Close" className="close-button" onClick={onBack}>Close</IconButton>
+      </Bar>
+      <div className="center-body voice-body">
+        <div className="voice-visual">
+          <VoiceIcon />
+          <div className={state === 'recording' ? 'wave waveform' : 'waveform'}>
+            {[6, 12, 20, 26, 20, 12, 6].map((height, index) => <span key={index} style={{ height: state === 'recording' ? height : 4 }} />)}
+          </div>
+        </div>
+        <div className="live-transcript">
+          {transcript || (state === 'recording' ? (source === 'usb' ? 'Recording from USB Camera Mic…' : 'Listening…') : source === 'usb' ? 'USB Camera Mic ready' : 'Phone Mic ready')}
+        </div>
+        {error && <span className="voice-error">{error}</span>}
+        <button
+          className={`primary-button record-button ${state === 'recording' ? 'holding' : ''}`}
+          disabled={state === 'transcribing'}
+          onPointerDown={beginRecording}
+          onPointerUp={finishRecording}
+          onPointerCancel={finishRecording}
+          onPointerLeave={finishRecording}
+        >
+          {label}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function VoiceResult({ transcript, onBack, onGenerate, hasReferenceImage }) {
   return <div className="screen"><Bar><span className="bar-title">Voice recognized</span></Bar><div className="center-body voice-result-body"><div className="transcript-card">{transcript}</div><span className="voice-result-note">English output · faster-whisper tiny{hasReferenceImage ? ' · camera image attached' : ''}</span><div className="voice-result-actions"><button className="ghost-button" onClick={onBack}>Discard</button><button className="primary-button" onClick={onGenerate}>Generate image</button></div></div></div>
 }
 
-function Capture({ mode, inputMethod, onCapture, onBack }) {
+function Capture({ mode, inputMethod, onCapture, onBack, source = 'usb', onSourceChange }) {
   const [recordState, setRecordState] = useState('idle')
   const [text, setText] = useState('')
   const isText = inputMethod === 'text'
-  if (!isText) return <VoiceRecorder mode={mode} onCapture={onCapture} onBack={onBack} />
+  if (!isText) return <VoiceRecorder mode={mode} onCapture={onCapture} onBack={onBack} source={source} onSourceChange={onSourceChange} />
   const finishRecording = () => { if (recordState !== 'holding') return; setRecordState('done'); window.setTimeout(() => onCapture(exampleStudyPrompt), 600) }
   return <div className="screen"><Bar><StatusDot color="var(--led-blue)" pulse /><span className="bar-title status-title">{modeNames[mode]}</span>{inputMethod === 'camera+voice' && <span className="step-copy">· step 2 of 2</span>}<IconButton label="Close" className="close-button" onClick={onBack}>×</IconButton></Bar>
     {isText ? <div className="center-body text-body"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder={mode === 'inventory' ? "Line 1: Item Name (Bold Big)\nLine 2: Description / Qty (Small)" : mode === 'product' ? "Line 1: Product Name\nLine 2: Price (e.g. 499)\nLine 3: Details / Description" : mode === 'qr' ? "Enter URL or text for QR code..." : "Describe what to label…"} /><button className="primary-button continue-button" disabled={!text.trim()} onClick={() => onCapture(text.trim())}>Continue</button></div>
@@ -561,6 +651,7 @@ export default function App() {
   const [voiceTranscript, setVoiceTranscript] = useState('')
   const [historyItems, setHistoryItems] = useState([])
   const [brightness, setBrightness] = useState(85)
+  const [deviceSource, setDeviceSource] = useState('usb')
   const scale = useDisplayScale()
   const go = useCallback((next) => setScreen(next), [])
 
@@ -784,8 +875,8 @@ export default function App() {
     switch (screen) {
       case 'mode-select': return <ModeSelect onSelect={(value) => { setMode(value); go('input-method') }} onBack={() => go('home')} onSettings={() => go('settings')} />
       case 'input-method': return <InputMethod mode={mode} onSelect={selectMethod} onBack={() => go('mode-select')} />
-      case 'camera-capture': return <CameraCapture onCaptured={(image) => { setReferenceImage(image); go('capture') }} onBack={() => go('input-method')} />
-      case 'capture': return <Capture mode={mode} inputMethod={inputMethod} onCapture={(text) => { setVoiceTranscript(text || ''); go('voice-result') }} onBack={() => go('input-method')} />
+      case 'camera-capture': return <CameraCapture source={deviceSource} onSourceChange={setDeviceSource} onCaptured={(image) => { setReferenceImage(image); go('capture') }} onBack={() => go('input-method')} />
+      case 'capture': return <Capture mode={mode} inputMethod={inputMethod} source={deviceSource} onSourceChange={setDeviceSource} onCapture={(text) => { setVoiceTranscript(text || ''); go('voice-result') }} onBack={() => go('input-method')} />
       case 'voice-result': return <VoiceResult transcript={voiceTranscript} hasReferenceImage={Boolean(referenceImage)} onBack={() => go('home')} onGenerate={() => mode === 'study' ? generateStudyImage(voiceTranscript) : go('preview')} />
       case 'processing': return <Processing onCancel={() => go('home')} error={generationError} />
       case 'preview': return <Preview mode={mode} transcript={voiceTranscript} generatedImage={generatedImage} isPrinting={isPrinting} printError={printError} onEdit={() => go('capture')} onPrint={() => printCurrentLabel()} />

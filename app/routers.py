@@ -117,6 +117,34 @@ async def transcribe_voice(audio: UploadFile = File(...)):
     return {"text": text, "language": language, "model": "tiny"}
 
 
+@router.post("/api/voice/start_record")
+def start_usb_mic_record():
+    """Start capturing audio from the physical USB camera microphone on the Raspberry Pi."""
+    from app.services.audio_recorder import usb_mic_recorder
+    result = usb_mic_recorder.start_recording()
+    if result.get("status") == "error":
+        raise HTTPException(status_code=502, detail=result.get("message", "Could not start USB mic."))
+    return result
+
+
+@router.post("/api/voice/stop_record")
+def stop_usb_mic_record():
+    """Stop USB microphone recording and transcribe using local faster-whisper."""
+    from app.services.audio_recorder import usb_mic_recorder
+    success, text, lang = usb_mic_recorder.stop_and_transcribe()
+    if not success:
+        raise HTTPException(status_code=422, detail=lang)
+    return {"status": "success", "text": text, "language": lang, "model": "tiny"}
+
+
+@router.post("/api/voice/cancel_record")
+def cancel_usb_mic_record():
+    """Cancel and discard ongoing USB microphone recording."""
+    from app.services.audio_recorder import usb_mic_recorder
+    usb_mic_recorder.stop_and_discard()
+    return {"status": "cancelled"}
+
+
 @router.get("/", response_class=HTMLResponse)
 def home():
     return f"""
@@ -233,25 +261,45 @@ def get_camera_status_endpoint():
     return get_camera_status()
 
 
+@router.get("/api/camera/frame")
+def get_camera_frame():
+    """Return latest live JPEG frame from Hikvision USB camera with zero caching."""
+    from fastapi.responses import Response
+    from app.services.camera import camera_manager
+
+    jpeg_bytes = camera_manager.get_latest_jpeg()
+    if jpeg_bytes is None:
+        raise HTTPException(status_code=503, detail="Camera frame not ready.")
+
+    return Response(
+        content=jpeg_bytes,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
 @router.post("/api/camera/capture")
 def capture_camera_frame():
     """Capture a high-res photo from the connected Hikvision USB camera."""
-    from app.services.camera import capture_usb_frame
-    success, base64_image, message = capture_usb_frame(width=1280, height=720)
+    from app.services.camera import camera_manager
+
+    success, base64_image, message = camera_manager.capture_photo()
     if not success:
         raise HTTPException(status_code=502, detail=message)
     return {"status": "success", "image": base64_image, "message": message}
 
 
-@router.get("/api/camera/stream")
-async def stream_camera(request: Request):
-    """Live MJPEG video stream from Hikvision USB camera with automatic disconnect handling."""
-    from fastapi.responses import StreamingResponse
-    from app.services.camera import generate_mjpeg_stream
-    return StreamingResponse(
-        generate_mjpeg_stream(request),
-        media_type="multipart/x-mixed-replace; boundary=frame",
-    )
+@router.post("/api/camera/release")
+def release_camera():
+    """Explicitly release camera device handle to turn off sensor and set LED to RED."""
+    from app.services.camera import camera_manager
+
+    camera_manager.release_now()
+    return {"status": "released"}
 
 
 @router.post("/simulate", response_model=SimulateResponse)
