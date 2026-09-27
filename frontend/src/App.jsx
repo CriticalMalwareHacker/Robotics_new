@@ -255,20 +255,20 @@ function Processing({ onCancel, error }) {
 }
 
 const previews = {
-  study: { title: 'Binary Search', desc: 'O(log n) · divide & conquer algorithm for sorted arrays' },
-  inventory: { title: 'Resistor 10kΩ', desc: '10k ohm 1/4W CFR · brown-black-orange' },
-  product: { title: 'RPi Module', desc: 'Raspberry Pi Compute Module 4 · 4GB' },
-  qr: { title: 'printsensei.local', desc: 'Local network resource link' },
+  study: { title: 'Study Diagram', desc: 'Educational diagram' },
+  inventory: { title: 'Inventory Item', desc: '' },
+  product: { title: 'Product Label', desc: '' },
+  qr: { title: 'QR Code', desc: '' },
 }
 
 function Preview({ mode, onEdit, onPrint, generatedImage, isPrinting, printError, transcript }) {
-  const previewItem = previews[mode] || { title: 'PrintSensei Label', desc: transcript || 'Ready to print' }
+  const previewItem = previews[mode] || { title: 'PrintSensei Label', desc: '' }
   const transcriptLines = (transcript || '').split('\n').map((l) => l.trim()).filter(Boolean)
-  const title = transcriptLines.length > 0 ? transcriptLines[0] : (transcript || previewItem.title)
-  const desc = transcriptLines.length > 1 ? transcriptLines.slice(1).join(' · ') : (transcript ? '' : previewItem.desc)
+  const title = transcriptLines.length > 0 ? transcriptLines[0] : previewItem.title
+  const desc = transcriptLines.length > 1 ? transcriptLines.slice(1).join(' · ') : ''
   const date = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase()
   if (generatedImage) return <div className="screen"><Bar><span className="bar-title">Study image</span><span className="bar-meta">Ready</span></Bar><div className="center-body preview-body"><img className="generated-image" src={generatedImage} alt="Generated study diagram" /><div className="preview-actions"><button className="ghost-button" disabled={isPrinting} onClick={onEdit}>Edit</button><button className="primary-button" disabled={isPrinting} onClick={onPrint}>{isPrinting ? 'Sending…' : 'Print'}</button></div>{printError && <span className="voice-error">{printError}</span>}</div></div>
-  return <div className="screen"><Bar><span className="bar-title">Preview</span><span className="bar-meta">{modeNames[mode]}</span></Bar><div className="center-body preview-body"><div className="label-preview"><div className="label-main"><div className="label-copy"><div className="label-title">{title}</div><div className="label-desc">{desc}</div></div><div className="qr-box"><QrIcon /></div></div><div className="label-footer mono">PRINTSENSEI · {date} · 58MM</div></div><div className="preview-actions"><button className="ghost-button" disabled={isPrinting} onClick={onEdit}>Edit</button><button className="primary-button" disabled={isPrinting} onClick={onPrint}>{isPrinting ? 'Sending…' : 'Print'}</button></div>{printError && <span className="voice-error">{printError}</span>}</div></div>
+  return <div className="screen"><Bar><span className="bar-title">Preview</span><span className="bar-meta">{modeNames[mode]}</span></Bar><div className="center-body preview-body"><div className="label-preview"><div className="label-main"><div className="label-copy"><div className="label-title">{title}</div>{desc && <div className="label-desc">{desc}</div>}</div><div className="qr-box"><QrIcon /></div></div><div className="label-footer mono">PRINTSENSEI · {date} · 58MM</div></div><div className="preview-actions"><button className="ghost-button" disabled={isPrinting} onClick={onEdit}>Edit</button><button className="primary-button" disabled={isPrinting} onClick={onPrint}>{isPrinting ? 'Sending…' : 'Print'}</button></div>{printError && <span className="voice-error">{printError}</span>}</div></div>
 }
 
 function Printing({ onDone }) {
@@ -478,7 +478,7 @@ export default function App() {
         const previewItem = previews[currentMode] || { title: 'PrintSensei Label', desc: 'Ready to print' }
         const transcriptLines = (voiceTranscript || '').split('\n').map((l) => l.trim()).filter(Boolean)
         const title = transcriptLines.length > 0 ? transcriptLines[0] : (voiceTranscript || previewItem.title)
-        const desc = transcriptLines.length > 1 ? transcriptLines.slice(1).join('\n') : previewItem.desc
+        const desc = transcriptLines.length > 1 ? transcriptLines.slice(1).join('\n') : ''
         itemTitle = title
         itemDesc = desc
         itemMode = currentMode
