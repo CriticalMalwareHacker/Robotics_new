@@ -1091,9 +1091,19 @@ Vite will output two URLs:
 - **Persistent Storage**: Connected `app/services/history.py` and `GET /api/history` to track all generated labels and diagrams.
 - **One-Tap Physical Reprints**: Allows users to reprint any past label or diagram directly from the LCD UI history list.
 
-#### ⚙️ Real-Time Hardware Telemetry & Settings
-- **Live Diagnostics (`GET /api/system/status`)**: Displays dynamic telemetry including real network IP/Wi-Fi interface, POSIFLOW 58D USB port status, V4L2/Camera state, OS platform, Python runtime, and AI engine status.
-- **Interactive Brightness Control**: Provides a tactile slider allowing live display brightness adjustments with CSS filter binding.
+#### 📷 Integrated Hikvision 1080P USB Webcam & Smart LED Lifecycle
+- **Zero-Latency Video Streaming**: Implemented `app/services/camera.py` with a background frame worker providing smooth, low-latency MJPEG preview frames over `GET /api/camera/frame`.
+- **Physical LED Power Management**: The physical camera LED remains **RED** during standby and only turns **BLUE** when the camera viewfinder is actively open. Exiting camera mode or capturing immediately releases the V4L2 device via `POST /api/camera/release`, resetting the LED to **RED**.
+- **Dual-Source Switching**: The UI provides a dedicated toggle (`[ USB Cam ]` vs `[ Phone ]`), allowing users to switch seamlessly between the Raspberry Pi's USB webcam and their smartphone's camera.
+- **Instant Photo Preview Overlay**: Captured photos (`POST /api/camera/capture`) are instantly displayed inside the viewfinder with a `Captured ✓` verification overlay before proceeding to the voice/intent step.
+
+#### 🎙️ Hardware USB Microphone & Whisper STT Pipeline
+- **ALSA Hardware Capture**: Direct PCM recording from the integrated webcam microphone (`card 0` / `plughw:0,0`) at `16000 Hz, Mono, S16_LE`.
+- **Dynamic Gain Normalization & DC Bias Removal**: Audio samples are processed with DC-offset filtering and dynamic 99.5th-percentile peak normalization in `app/services/audio_recorder.py`, boosting speech to clean ~22,000 peak levels for reliable transcription even from a distance.
+- **Dual Tap & Hold Recording UX**:
+  - **Tap to Toggle**: Tap once to start recording with a live duration counter (`🔴 Recording USB Mic (0:03)...`), and tap again to stop & transcribe.
+  - **Push-to-Talk**: Press and hold while speaking, then release to transcribe immediately.
+- **Optimized faster-whisper Engine**: Powered by `faster-whisper` (`tiny`, `int8`, `beam_size=5`, `best_of=5`) for sub-second, highly accurate offline speech-to-text on Raspberry Pi CPU.
 
 ---
 
