@@ -244,12 +244,12 @@ def capture_camera_frame():
 
 
 @router.get("/api/camera/stream")
-def stream_camera():
-    """Live MJPEG video stream from Hikvision USB camera."""
+async def stream_camera(request: Request):
+    """Live MJPEG video stream from Hikvision USB camera with automatic disconnect handling."""
     from fastapi.responses import StreamingResponse
     from app.services.camera import generate_mjpeg_stream
     return StreamingResponse(
-        generate_mjpeg_stream(),
+        generate_mjpeg_stream(request),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
 

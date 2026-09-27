@@ -68,44 +68,51 @@ def capture_usb_frame(device_index: int | None = None, width: int = 1280, height
             cap.release()
 
 
-def generate_mjpeg_stream() -> Generator[bytes, None, None]:
-    """Generate low-latency MJPEG video stream chunks for browser live preview."""
+async def generate_mjpeg_stream(request: Any = None) -> Any:
+    """Generate low-latency MJPEG video stream chunks and release camera as soon as disconnected."""
+    import asyncio
     device_index = get_camera_device_index()
-    cap = cv2.VideoCapture(device_index, cv2.CAP_V4L2)
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(device_index)
+    
+    with _CAMERA_LOCK:
+        cap = cv2.VideoCapture(device_index, cv2.CAP_V4L2)
+        if not cap.isOpened():
+            cap = cv2.VideoCapture(device_index)
 
-    if not cap.isOpened():
-        logger.warning("Could not open camera for MJPEG stream.")
-        return
+        if not cap.isOpened():
+            logger.warning("Could not open camera for MJPEG stream.")
+            return
 
-    try:
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        cap.set(cv2.CAP_PROP_FPS, 15)
+        try:
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            cap.set(cv2.CAP_PROP_FPS, 15)
 
-        while True:
-            ret, frame = cap.read()
-            if not ret or frame is None:
-                time.sleep(0.1)
-                continue
+            while True:
+                if request is not None and await request.is_disconnected():
+                    break
 
-            success, jpeg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
-            if not success:
-                continue
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    await asyncio.sleep(0.05)
+                    continue
 
-            frame_bytes = jpeg.tobytes()
-            yield (
-                b"--frame\r\n"
-                b"Content-Type: image/jpeg\r\n"
-                b"Content-Length: " + str(len(frame_bytes)).encode() + b"\r\n\r\n" +
-                frame_bytes + b"\r\n"
-            )
-            time.sleep(0.06)  # ~15 fps
-    except Exception as exc:
-        logger.error(f"MJPEG stream error: {exc}")
-    finally:
-        cap.release()
+                success, jpeg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+                if not success:
+                    continue
+
+                frame_bytes = jpeg.tobytes()
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n"
+                    b"Content-Length: " + str(len(frame_bytes)).encode() + b"\r\n\r\n" +
+                    frame_bytes + b"\r\n"
+                )
+                await asyncio.sleep(0.06)  # ~15 fps
+        except (GeneratorExit, asyncio.CancelledError, Exception) as exc:
+            logger.info(f"Camera stream disconnected: {exc}")
+        finally:
+            cap.release()
+            logger.info("USB camera device released; LED turns RED.")
 
 
 def get_camera_status() -> dict[str, str | bool | int]:

@@ -112,6 +112,7 @@ function CameraCapture({ onCaptured, onBack }) {
   const [captured, setCaptured] = useState(false)
   const [capturing, setCapturing] = useState(false)
   const [cameraError, setCameraError] = useState('')
+  const [streamActive, setStreamActive] = useState(true)
   const videoRef = useRef(null)
   const streamRef = useRef(null)
 
@@ -120,8 +121,10 @@ function CameraCapture({ onCaptured, onBack }) {
     streamRef.current = null
   }
 
+  // Lifecycle control: Ensure camera stream drops immediately when leaving or switching
   useEffect(() => {
     if (source === 'phone') {
+      setStreamActive(false)
       let active = true
       setCameraError('')
       navigator.mediaDevices?.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
@@ -135,8 +138,16 @@ function CameraCapture({ onCaptured, onBack }) {
     } else {
       stopPhoneCamera()
       setCameraError('')
+      setStreamActive(true)
+      return () => { setStreamActive(false) }
     }
   }, [source])
+
+  const handleClose = () => {
+    setStreamActive(false)
+    stopPhoneCamera()
+    onBack()
+  }
 
   const takePhoto = async () => {
     if (captured || capturing) return
@@ -145,6 +156,8 @@ function CameraCapture({ onCaptured, onBack }) {
 
     if (source === 'usb') {
       try {
+        // Drop preview stream before full capture so device lock is clean
+        setStreamActive(false)
         const res = await fetch('/api/camera/capture', { method: 'POST' })
         const data = await res.json()
         if (!res.ok || !data.image) {
@@ -155,6 +168,7 @@ function CameraCapture({ onCaptured, onBack }) {
       } catch (err) {
         setCameraError(err.message || 'USB camera capture failed.')
         setCapturing(false)
+        setStreamActive(true)
       }
     } else {
       const video = videoRef.current
@@ -194,17 +208,23 @@ function CameraCapture({ onCaptured, onBack }) {
             Phone
           </button>
         </div>
-        <IconButton label="Close" className="close-button" onClick={onBack}>×</IconButton>
+        <IconButton label="Close" className="close-button" onClick={handleClose}>×</IconButton>
       </Bar>
       <div className="center-body camera-body">
         <div className="camera-frame">
           {source === 'usb' ? (
-            <img
-              className="camera-stream-img"
-              src="/api/camera/stream"
-              alt="Hikvision USB Stream"
-              onError={() => setCameraError('USB Webcam stream offline or busy.')}
-            />
+            streamActive && !captured ? (
+              <img
+                className="camera-stream-img"
+                src={`/api/camera/stream?t=${Date.now()}`}
+                alt="Hikvision USB Stream"
+                onError={() => setCameraError('USB Webcam stream offline or busy.')}
+              />
+            ) : (
+              <div style={{ color: 'var(--dim)', fontSize: 'var(--fs-xs)' }}>
+                {captured ? 'Photo Saved ✓' : 'Camera Standby'}
+              </div>
+            )
           ) : (
             <video ref={videoRef} className="camera-video" autoPlay playsInline muted />
           )}
