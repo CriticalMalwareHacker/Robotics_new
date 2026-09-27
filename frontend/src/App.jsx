@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 const exampleStudyPrompt = 'Make me a detailed labeled diagram of the IEM in the reference image including its internals as well'
 
@@ -292,45 +292,154 @@ function Printing({ onDone }) {
   return <div className="screen"><Bar><StatusDot color="var(--led-green)" pulse /><span className="bar-title status-title">Printing</span></Bar><div className="center-body printing-body"><SuccessIcon /><div className="printed-copy"><div>Label printed</div><span>Returning to home…</span></div><div className="progress-track print-progress"><div className="drain-anim" /></div></div></div>
 }
 
-function Settings({ onBack }) {
+function Settings({ onBack, brightness = 85, onBrightnessChange }) {
+  const [systemInfo, setSystemInfo] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    fetch('/api/system/status')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data) {
+          setSystemInfo(data)
+          setLoading(false)
+        }
+      })
+      .catch(() => {
+        if (active) setLoading(false)
+      })
+    return () => { active = false }
+  }, [])
+
+  const wifiVal = systemInfo?.wifi?.name || 'Online'
+  const printerVal = systemInfo?.printer?.status || 'POSIFLOW 58D (USB)'
+  const cameraVal = systemInfo?.camera?.name || 'Camera Ready'
+  const osVal = systemInfo?.system?.os || 'Linux'
+  const appVer = systemInfo?.system?.version || 'v1.0.0'
+
   const rows = [
-    { icon: <WifiIcon on />, label: 'Wi-Fi', value: 'PrintNet_5G' },
-    { icon: <PrinterIcon on />, label: 'Printer', value: 'POSIFLOW 58D' },
-    { icon: <CameraIcon on />, label: 'Camera', value: 'Pi Camera v2' },
+    { icon: <WifiIcon on={Boolean(systemInfo?.wifi?.status)} />, label: 'Wi-Fi / LAN', value: wifiVal },
+    { icon: <PrinterIcon on />, label: 'Printer', value: printerVal },
+    { icon: <CameraIcon on />, label: 'Camera', value: cameraVal },
   ]
-  return <div className="screen"><Bar><IconButton label="Back" onClick={onBack}><BackIcon /></IconButton><span className="bar-title title-after-back">Settings</span></Bar><div className="settings-list scroll-hidden">{rows.map((row) => <button className="settings-row" key={row.label}>{row.icon}<span>{row.label}</span><small>{row.value}</small><NextIcon /></button>)}<div className="brightness"><div><span>Brightness</span><small>80%</small></div><div className="brightness-track"><div className="brightness-fill" /><i /></div></div><button className="settings-row about-row"><span>About</span><small className="mono">v1.0.0 · RPi 5</small><NextIcon /></button></div></div>
+
+  return (
+    <div className="screen">
+      <Bar>
+        <IconButton label="Back" onClick={onBack}><BackIcon /></IconButton>
+        <span className="bar-title title-after-back">Settings</span>
+        {loading && <span className="mono" style={{ fontSize: '9px', color: 'var(--dim)', marginLeft: 'auto' }}>Syncing...</span>}
+      </Bar>
+      <div className="settings-list scroll-hidden">
+        {rows.map((row) => (
+          <div className="settings-row" key={row.label}>
+            {row.icon}
+            <span>{row.label}</span>
+            <small>{row.value}</small>
+          </div>
+        ))}
+        <div className="brightness">
+          <div>
+            <span>Brightness</span>
+            <small>{brightness}%</small>
+          </div>
+          <div
+            className="brightness-track"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              const pct = Math.max(30, Math.min(100, Math.round(((e.clientX - rect.left) / rect.width) * 100)))
+              onBrightnessChange?.(pct)
+            }}
+            style={{ cursor: 'pointer' }}
+          >
+            <div className="brightness-fill" style={{ width: `${brightness}%` }} />
+            <i style={{ left: `${brightness}%` }} />
+          </div>
+        </div>
+        <div className="settings-row about-row">
+          <span>System</span>
+          <small className="mono">{appVer} · {osVal}</small>
+        </div>
+        <div className="settings-row">
+          <span>AI Engines</span>
+          <small className="mono">Whisper + Gemini</small>
+        </div>
+      </div>
+    </div>
+  )
 }
 
+const historyFilterTabs = [
+  { id: 'all', label: 'All' },
+  { id: 'study', label: 'Study' },
+  { id: 'inventory', label: 'Inventory' },
+  { id: 'product', label: 'Product' },
+  { id: 'qr', label: 'QR Code' },
+]
+
 function History({ onBack, onReprint, items = [], isPrinting = false }) {
+  const [selectedGroup, setSelectedGroup] = useState('all')
+
+  const filteredItems = useMemo(() => {
+    if (selectedGroup === 'all') return items
+    return items.filter((item) => (item.mode || 'study').toLowerCase() === selectedGroup)
+  }, [items, selectedGroup])
+
   return (
     <div className="screen">
       <Bar>
         <IconButton label="Back" onClick={onBack}><BackIcon /></IconButton>
         <span className="bar-title title-after-back">History</span>
-        <span className="history-count">{items.length} {items.length === 1 ? 'label' : 'labels'}</span>
+        <span className="history-count">{filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'}</span>
       </Bar>
+
+      <div className="history-filter-bar scroll-hidden">
+        {historyFilterTabs.map((tab) => {
+          const count = tab.id === 'all'
+            ? items.length
+            : items.filter((it) => (it.mode || 'study').toLowerCase() === tab.id).length
+          return (
+            <button
+              key={tab.id}
+              className={`history-filter-btn ${selectedGroup === tab.id ? 'active' : ''}`}
+              onClick={() => setSelectedGroup(tab.id)}
+            >
+              <span>{tab.label}</span>
+              <span className="history-filter-badge">{count}</span>
+            </button>
+          )
+        })}
+      </div>
+
       <div className="history-list scroll-hidden">
-        {items.length === 0 ? (
-          <div className="center-body" style={{ color: 'var(--dim)', fontSize: 'var(--fs-xs)', height: '140px' }}>
-            No print history yet
+        {filteredItems.length === 0 ? (
+          <div className="center-body" style={{ color: 'var(--dim)', fontSize: 'var(--fs-xs)', height: '110px' }}>
+            No {selectedGroup === 'all' ? 'print' : selectedGroup} history yet
           </div>
         ) : (
-          items.map((item) => (
-            <div className="history-row" key={item.id}>
-              <div className="history-copy">
-                <div>{item.title}</div>
-                <span>{item.desc}</span>
+          filteredItems.map((item) => {
+            const itemMode = (item.mode || 'study').toUpperCase()
+            return (
+              <div className="history-row" key={item.id}>
+                <div className="history-copy">
+                  <div className="history-title-row">
+                    <span className="history-title-text">{item.title}</span>
+                    <span className={`history-mode-pill mode-${(item.mode || 'study').toLowerCase()}`}>{itemMode}</span>
+                  </div>
+                  <span>{item.desc}</span>
+                </div>
+                <span className="mono history-time">{item.time}</span>
+                <IconButton
+                  label={`Reprint ${item.title}`}
+                  disabled={isPrinting}
+                  onClick={() => onReprint(item)}
+                >
+                  <RetryIcon />
+                </IconButton>
               </div>
-              <span className="mono history-time">{item.time}</span>
-              <IconButton
-                label={`Reprint ${item.title}`}
-                disabled={isPrinting}
-                onClick={() => onReprint(item)}
-              >
-                <RetryIcon />
-              </IconButton>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
     </div>
@@ -359,6 +468,7 @@ export default function App() {
   const [isPrinting, setIsPrinting] = useState(false)
   const [voiceTranscript, setVoiceTranscript] = useState('')
   const [historyItems, setHistoryItems] = useState([])
+  const [brightness, setBrightness] = useState(85)
   const scale = useDisplayScale()
   const go = useCallback((next) => setScreen(next), [])
 
@@ -588,12 +698,12 @@ export default function App() {
       case 'processing': return <Processing onCancel={() => go('home')} error={generationError} />
       case 'preview': return <Preview mode={mode} transcript={voiceTranscript} generatedImage={generatedImage} isPrinting={isPrinting} printError={printError} onEdit={() => go('capture')} onPrint={() => printCurrentLabel()} />
       case 'printing': return <Printing onDone={() => go('home')} />
-      case 'settings': return <Settings onBack={() => go('home')} />
+      case 'settings': return <Settings onBack={() => go('home')} brightness={brightness} onBrightnessChange={setBrightness} />
       case 'history': return <History items={historyItems} isPrinting={isPrinting} onBack={() => go('home')} onReprint={(item) => printCurrentLabel(item)} />
       default: return <Home onStart={() => go('mode-select')} onSettings={() => go('settings')} onHistory={openHistory} />
     }
   }
 
-  return <main className="lcd-viewport"><div className="lcd-screen" style={{ transform: `scale(${scale})` }}>{renderScreen()}</div></main>
+  return <main className="lcd-viewport"><div className="lcd-screen" style={{ transform: `scale(${scale})`, filter: `brightness(${brightness}%)` }}>{renderScreen()}</div></main>
 }
 

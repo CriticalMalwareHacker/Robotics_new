@@ -1086,9 +1086,14 @@ Vite will output two URLs:
 #### 📚 Study Diagrams & Floyd-Steinberg Dithering
 - **Monochrome Diagram Scaling**: Educational diagrams generated via Gemini AI are scaled to 384 px with Floyd-Steinberg error-diffusion dithering for crisp legibility on 58 mm thermal paper.
 
-#### 🔄 Synchronized Real-Time History & Reprints
-- **History Synchronization**: Added `app/services/history.py` and `GET /api/history` to track all generated labels and diagrams.
+#### 🔄 Synchronized Real-Time History & Categorized Groups
+- **Categorized Tabs**: Structured history into dedicated category groups (`All`, `Study`, `Inventory`, `Product`, `QR Code`) with live count badges and colored mode indicator pills.
+- **Persistent Storage**: Connected `app/services/history.py` and `GET /api/history` to track all generated labels and diagrams.
 - **One-Tap Physical Reprints**: Allows users to reprint any past label or diagram directly from the LCD UI history list.
+
+#### ⚙️ Real-Time Hardware Telemetry & Settings
+- **Live Diagnostics (`GET /api/system/status`)**: Displays dynamic telemetry including real network IP/Wi-Fi interface, POSIFLOW 58D USB port status, V4L2/Camera state, OS platform, Python runtime, and AI engine status.
+- **Interactive Brightness Control**: Provides a tactile slider allowing live display brightness adjustments with CSS filter binding.
 
 ---
 

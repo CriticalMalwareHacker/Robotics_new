@@ -148,6 +148,20 @@ svg { display: block; }
 .about-row small { color: var(--dim); }
 
 .history-count { margin-left: auto; color: var(--dim); font-size: var(--fs-xs); }
+.history-filter-bar { display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; flex: none; }
+.history-filter-btn { display: flex; align-items: center; gap: 4px; padding: 2px 7px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--dim); font-size: 10px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: all .15s ease; }
+.history-filter-btn:hover { color: var(--text); background: var(--lift); }
+.history-filter-btn.active { color: var(--text); background: var(--lift); border-color: var(--border); }
+.history-filter-badge { font-size: 8px; padding: 1px 4px; border-radius: 6px; background: rgba(255, 255, 255, .08); color: var(--sub); }
+.history-filter-btn.active .history-filter-badge { background: var(--accent); color: #000; font-weight: 700; }
+.history-title-row { display: flex; align-items: center; gap: 5px; overflow: hidden; }
+.history-title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-mode-pill { font-size: 7.5px; font-weight: 700; letter-spacing: .04em; padding: 1px 4px; border-radius: 3px; flex: none; line-height: 1.1; }
+.mode-study { background: rgba(168, 85, 247, .15); color: #c084fc; border: 1px solid rgba(168, 85, 247, .3); }
+.mode-inventory { background: rgba(59, 130, 246, .15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, .3); }
+.mode-product { background: rgba(234, 179, 8, .15); color: #facc15; border: 1px solid rgba(234, 179, 8, .3); }
+.mode-qr { background: rgba(34, 197, 94, .15); color: #4ade80; border: 1px solid rgba(34, 197, 94, .3); }
+
 .history-row { height: 44px; padding: 0 12px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
 .history-copy { flex: 1; overflow: hidden; }
 .history-copy div { overflow: hidden; color: var(--text); font-size: var(--fs-b); font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
