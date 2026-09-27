@@ -1063,7 +1063,32 @@ Vite will output two URLs:
 - **Connection Refused / Timeout on Phone**:
   - Check that Windows Defender Firewall allows incoming connections on port `5173` and `8000`.
   - Ensure your network profile in Windows Settings is set to **Private network**.
-- **Printer Offline / Mock Mode**: On non-Linux/PC environments, the printer simulator logs print commands without erroring, allowing full workflow testing without physical hardware attached.
+---
+
+### 6. Recent Enhancements & Hardware Optimization Changelog
+
+#### 🖨️ Zero-Corruption PyUSB Printer Driver
+- **Direct PyUSB Bulk Transport**: Re-engineered `app/services/printer.py` to communicate directly with POSIFLOW 58D thermal printers over USB bulk endpoint `0x03` with a hardware-level thread mutex (`_PRINTER_LOCK`).
+- **State Reset & Chunked Pacing**: Prepends hardware reset sequences (`\x1b\x40` ESC @) and transmits dithered bitmap payloads in 512-byte paced chunks, preventing buffer overruns, partial feeds, and random symbol corruption.
+- **Automatic Stall Recovery**: Integrated `USBDEVFS_RESET` ioctl resets and kernel driver detaching for zero-downtime hot-plugging.
+
+#### 📦 Inventory Mode Formatting
+- **Hierarchy Styling**: Formatted Line 1 in bold large header font (`fonts.get("large")`) and Line 2+ in clean secondary small body font (`fonts.get("small")`).
+- **Clean Label Rendering**: Stripped all dummy/fallback placeholder strings (`brown-black-orange`) from printed labels, rendering only genuine user-entered text.
+
+#### 🏷️ Product Mode & Dynamic Price Detection
+- **Intelligent Price Parsing**: Automatically detects price inputs across voice/text (`Rs 499`, `₹499`, `Price: 499`, `$499`, or raw numbers) and maps them into structured backend `price` fields.
+- **Professional Label Layout**: Centers product titles, renders highlighted price tags (`Rs <price>`), attaches timestamps, prints multiline item descriptions, and embeds a centered QR code matrix.
+
+#### 🔗 Standalone QR Code Mode
+- **Clean Matrix Rendering**: Standalone QR code mode renders a centered, high-contrast 280 px QR matrix with zero extraneous text above or below.
+
+#### 📚 Study Diagrams & Floyd-Steinberg Dithering
+- **Monochrome Diagram Scaling**: Educational diagrams generated via Gemini AI are scaled to 384 px with Floyd-Steinberg error-diffusion dithering for crisp legibility on 58 mm thermal paper.
+
+#### 🔄 Synchronized Real-Time History & Reprints
+- **History Synchronization**: Added `app/services/history.py` and `GET /api/history` to track all generated labels and diagrams.
+- **One-Tap Physical Reprints**: Allows users to reprint any past label or diagram directly from the LCD UI history list.
 
 ---
 
@@ -1072,3 +1097,4 @@ Vite will output two URLs:
 This repository is intended for academic and educational use.
 
 A suitable open-source license will be added as the project progresses.
+
