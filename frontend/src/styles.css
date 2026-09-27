@@ -69,9 +69,14 @@ svg { display: block; }
 .status-title { margin-left: 8px; }
 .step-copy { margin-left: 4px; color: var(--sub); font-size: var(--fs-xs); }
 .close-button { margin-left: auto; color: var(--dim); font-size: var(--fs-b); }
-.camera-body { gap: 14px; }
-.camera-frame { position: relative; width: 200px; height: 110px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border); border-radius: 2px; background: var(--surface); }
+.camera-body { gap: 10px; }
+.camera-source-tabs { display: flex; align-items: center; gap: 4px; padding: 2px 4px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); }
+.camera-source-btn { padding: 2px 8px; border: none; border-radius: 9px; background: transparent; color: var(--dim); font-size: 9px; font-weight: 500; cursor: pointer; transition: all .15s; }
+.camera-source-btn:hover { color: var(--text); }
+.camera-source-btn.active { color: var(--text); background: var(--lift); font-weight: 600; }
+.camera-frame { position: relative; width: 200px; height: 105px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border); border-radius: 2px; background: var(--surface); }
 .camera-video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.camera-stream-img { width: 100%; height: 100%; object-fit: cover; }
 .corner { position: absolute; width: 14px; height: 14px; }
 .corner.top { top: 6px; border-top: 1.5px solid var(--sub); }
 .corner.bottom { bottom: 6px; border-bottom: 1.5px solid var(--sub); }

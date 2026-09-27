@@ -108,53 +108,125 @@ function InputMethod({ mode, onSelect, onBack }) {
 }
 
 function CameraCapture({ onCaptured, onBack }) {
+  const [source, setSource] = useState('usb') // 'usb' (Hikvision 1080p) or 'phone'
   const [captured, setCaptured] = useState(false)
+  const [capturing, setCapturing] = useState(false)
   const [cameraError, setCameraError] = useState('')
   const videoRef = useRef(null)
   const streamRef = useRef(null)
-  const stopCamera = () => {
+
+  const stopPhoneCamera = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
   }
+
   useEffect(() => {
-    let active = true
-    navigator.mediaDevices?.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
-      .then((stream) => {
-        if (!active) { stream.getTracks().forEach((track) => track.stop()); return }
-        streamRef.current = stream
-        if (videoRef.current) videoRef.current.srcObject = stream
-      })
-      .catch(() => setCameraError('Camera access was denied or is unavailable.'))
-    return () => { active = false; stopCamera() }
-  }, [])
-  const takePhoto = () => {
-    const video = videoRef.current
-    if (!video?.videoWidth) return
-    const canvas = document.createElement('canvas')
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
-    const image = canvas.toDataURL('image/png')
-    setCaptured(true)
-    stopCamera()
-    window.setTimeout(() => onCaptured(image), 450)
+    if (source === 'phone') {
+      let active = true
+      setCameraError('')
+      navigator.mediaDevices?.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+        .then((stream) => {
+          if (!active) { stream.getTracks().forEach((track) => track.stop()); return }
+          streamRef.current = stream
+          if (videoRef.current) videoRef.current.srcObject = stream
+        })
+        .catch(() => setCameraError('Phone camera access was denied or is unavailable.'))
+      return () => { active = false; stopPhoneCamera() }
+    } else {
+      stopPhoneCamera()
+      setCameraError('')
+    }
+  }, [source])
+
+  const takePhoto = async () => {
+    if (captured || capturing) return
+    setCapturing(true)
+    setCameraError('')
+
+    if (source === 'usb') {
+      try {
+        const res = await fetch('/api/camera/capture', { method: 'POST' })
+        const data = await res.json()
+        if (!res.ok || !data.image) {
+          throw new Error(data.detail || 'Failed to capture frame from USB webcam.')
+        }
+        setCaptured(true)
+        window.setTimeout(() => onCaptured(data.image), 400)
+      } catch (err) {
+        setCameraError(err.message || 'USB camera capture failed.')
+        setCapturing(false)
+      }
+    } else {
+      const video = videoRef.current
+      if (!video?.videoWidth) {
+        setCapturing(false)
+        return
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+      const image = canvas.toDataURL('image/jpeg', 0.92)
+      setCaptured(true)
+      stopPhoneCamera()
+      window.setTimeout(() => onCaptured(image), 400)
+    }
   }
-  return <div className="screen"><Bar><StatusDot color="var(--led-blue)" pulse /><span className="bar-title status-title">Camera</span><span className="step-copy">Step 1 of 2</span><IconButton label="Close" className="close-button" onClick={onBack}>Close</IconButton></Bar><div className="center-body camera-body"><div className="camera-frame"><video ref={videoRef} className="camera-video" autoPlay playsInline muted /><i className="corner top left" /><i className="corner top right" /><i className="corner bottom left" /><i className="corner bottom right" /><span className="camera-prompt">{cameraError || (captured ? 'Captured' : 'Aim at subject')}</span></div><button className={`primary-button capture-button ${captured ? 'is-captured' : ''}`} disabled={captured || Boolean(cameraError)} onClick={takePhoto}>{captured ? 'Captured' : 'Capture Photo'}</button></div></div>
-  const fileInput = useRef(null)
-  const capture = () => fileInput.current?.click()
-  const selectImage = (event) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => { setCaptured(true); window.setTimeout(() => onCaptured(reader.result), 500) }
-    reader.readAsDataURL(file)
-  }
-  return <div className="screen"><Bar><StatusDot color="var(--led-blue)" pulse /><span className="bar-title status-title">Camera</span><span className="step-copy">· step 1 of 2</span><IconButton label="Close" className="close-button" onClick={onBack}>×</IconButton></Bar>
-    <div className="center-body camera-body"><div className="camera-frame"><i className="corner top left" /><i className="corner top right" /><i className="corner bottom left" /><i className="corner bottom right" /><span className={captured ? 'capture-done' : 'camera-prompt'}>{captured ? 'Captured ✓' : 'Aim at subject'}</span></div>
-      <input ref={fileInput} className="camera-file-input" type="file" accept="image/*" capture="environment" onChange={selectImage} />
-      <button className={`primary-button capture-button ${captured ? 'is-captured' : ''}`} disabled={captured} onClick={capture}>{captured ? 'Captured' : 'Capture Photo'}</button>
+
+  return (
+    <div className="screen">
+      <Bar>
+        <StatusDot color="var(--led-blue)" pulse />
+        <span className="bar-title status-title">Camera</span>
+        <div className="camera-source-tabs" style={{ marginLeft: 'auto', marginRight: '6px' }}>
+          <button
+            type="button"
+            className={`camera-source-btn ${source === 'usb' ? 'active' : ''}`}
+            onClick={() => { setSource('usb'); setCameraError('') }}
+          >
+            USB Cam
+          </button>
+          <button
+            type="button"
+            className={`camera-source-btn ${source === 'phone' ? 'active' : ''}`}
+            onClick={() => { setSource('phone'); setCameraError('') }}
+          >
+            Phone
+          </button>
+        </div>
+        <IconButton label="Close" className="close-button" onClick={onBack}>×</IconButton>
+      </Bar>
+      <div className="center-body camera-body">
+        <div className="camera-frame">
+          {source === 'usb' ? (
+            <img
+              className="camera-stream-img"
+              src="/api/camera/stream"
+              alt="Hikvision USB Stream"
+              onError={() => setCameraError('USB Webcam stream offline or busy.')}
+            />
+          ) : (
+            <video ref={videoRef} className="camera-video" autoPlay playsInline muted />
+          )}
+          <i className="corner top left" />
+          <i className="corner top right" />
+          <i className="corner bottom left" />
+          <i className="corner bottom right" />
+          <span className={captured ? 'capture-done' : 'camera-prompt'}>
+            {cameraError || (captured ? 'Captured ✓' : source === 'usb' ? 'Hikvision USB 1080p' : 'Aim at subject')}
+          </span>
+        </div>
+        <button
+          type="button"
+          className={`primary-button capture-button ${captured ? 'is-captured' : ''}`}
+          disabled={captured || capturing}
+          onClick={takePhoto}
+        >
+          {captured ? 'Captured ✓' : capturing ? 'Capturing…' : 'Capture Photo'}
+        </button>
+      </div>
     </div>
-  </div>
+  )
 }
 
 function VoiceRecorder({ mode, onCapture, onBack }) {

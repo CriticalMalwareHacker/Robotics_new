@@ -23,6 +23,10 @@ faster-whisper>=1.1.0
 qrcode[pil]>=8.0
 Pillow>=10.0.0
 
+# Hardware drivers and camera
+pyusb>=1.2.1
+opencv-python-headless>=4.8.0
+
 # Test suite
 pytest>=8.0.0
 

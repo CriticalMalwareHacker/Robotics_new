@@ -209,8 +209,9 @@ def get_system_status():
             "port": "USB 0416:5011",
         },
         "camera": {
-            "name": camera_name,
-            "status": "Ready",
+            "name": "Hikvision 1080P USB Camera" if v4l_devices else "Browser / WebRTC",
+            "status": "Online (USB Video)" if v4l_devices else "WebRTC Only",
+            "usb_connected": bool(v4l_devices),
         },
         "system": {
             "app": APP_NAME,
@@ -223,6 +224,34 @@ def get_system_status():
             "ai_vision": "Gemini Multimodal",
         },
     }
+
+
+@router.get("/api/camera/status")
+def get_camera_status_endpoint():
+    """Return status of Raspberry Pi USB camera."""
+    from app.services.camera import get_camera_status
+    return get_camera_status()
+
+
+@router.post("/api/camera/capture")
+def capture_camera_frame():
+    """Capture a high-res photo from the connected Hikvision USB camera."""
+    from app.services.camera import capture_usb_frame
+    success, base64_image, message = capture_usb_frame(width=1280, height=720)
+    if not success:
+        raise HTTPException(status_code=502, detail=message)
+    return {"status": "success", "image": base64_image, "message": message}
+
+
+@router.get("/api/camera/stream")
+def stream_camera():
+    """Live MJPEG video stream from Hikvision USB camera."""
+    from fastapi.responses import StreamingResponse
+    from app.services.camera import generate_mjpeg_stream
+    return StreamingResponse(
+        generate_mjpeg_stream(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
 
 
 @router.post("/simulate", response_model=SimulateResponse)
