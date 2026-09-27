@@ -5,52 +5,56 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.main import app
-from app.services.printer import pil_to_escpos_raster
+from app.services.printer import pil_to_escpos_raster, prepare_image_for_printing
 
 
-def test_escpos_header_and_black_bits():
-    """Verify that ESC/POS payload begins with GS v 0 and correctly packs black bits."""
-    image = Image.new("1", (8, 2), 255)
-    image.putpixel((0, 0), 0)  # Top-left black pixel -> MSB bit 7 of byte 0
-    image.putpixel((7, 1), 0)  # Bottom-right black pixel -> LSB bit 0 of byte 1
+def test_escpos_initialization_and_header():
+    """Verify that ESC/POS payload begins with ESC @ (0x1B 0x40) followed by GS v 0 raster header."""
+    image = Image.new("RGB", (384, 100), (255, 255, 255))
+    payload = pil_to_escpos_raster(image, target_width=384)
 
-    payload = pil_to_escpos_raster(image)
+    # ESC @ initialization
+    assert payload.startswith(b"\x1b\x40")
 
-    # GS v 0 header: 0x1D, 0x76, 0x30, 0x00
-    assert payload.startswith(b"\x1d\x76\x30\x00")
-    # Header format: GS v 0 \x00 xL xH yL yH
-    # For width=8 (width_bytes=1) and height=2: xL=1, xH=0, yL=2, yH=0
-    assert payload[:8] == b"\x1d\x76\x30\x00\x01\x00\x02\x00"
-    # Row 0: 0b10000000 (0x80), Row 1: 0b00000001 (0x01)
-    assert payload[8:] == bytes([0b10000000, 0b00000001])
+    # GS v 0 0 xL xH yL yH
+    # For width=384 (width_bytes=48: 0x30, 0x00) and height=100 (0x64, 0x00)
+    raster_slice = payload[2:10]
+    assert raster_slice == b"\x1d\x76\x30\x00\x30\x00\x64\x00"
 
-
-def test_escpos_encoder_pads_width():
-    """Verify that images with width not divisible by 8 are padded to a multiple of 8."""
-    image = Image.new("1", (9, 1), 255)
-    image.putpixel((0, 0), 0)  # First pixel black
-    image.putpixel((8, 0), 0)  # 9th pixel black (in second byte)
-
-    payload = pil_to_escpos_raster(image)
-
-    # Padded width is 16 -> width_bytes=2
-    assert payload[:8] == b"\x1d\x76\x30\x00\x02\x00\x01\x00"
-    # Byte 0: 0b10000000, Byte 1: 0b10000000 (padding bits on right are 0)
-    assert payload[8:] == bytes([0b10000000, 0b10000000])
+    # Total payload size: 2 (init) + 8 (header) + 48*100 (bitmap) + 4 (feed)
+    assert len(payload) == 2 + 8 + (48 * 100) + 4
+    assert payload.endswith(b"\n\n\n\n")
 
 
-def test_escpos_dimension_bytes_match_image():
-    """Verify width and height bytes for larger dimensions (e.g. 384x200)."""
-    image = Image.new("1", (384, 200), 255)
-    payload = pil_to_escpos_raster(image)
+def test_prepare_image_for_printing_preserves_original_and_scales():
+    """Verify that original AI image is untouched while 1-bit scaled version is generated."""
+    original = Image.new("RGBA", (1024, 1024), (255, 255, 255, 255))
+    prepared = prepare_image_for_printing(original, target_width=384)
 
-    # width_bytes = 384 // 8 = 48 (0x30, 0x00), height = 200 (0xC8, 0x00)
-    assert payload[:8] == b"\x1d\x76\x30\x00\x30\x00\xc8\x00"
-    assert len(payload) == 8 + (48 * 200)
+    # Original is untouched
+    assert original.size == (1024, 1024)
+    assert original.mode == "RGBA"
+
+    # Prepared image is 1-bit and 384px wide
+    assert prepared.size == (384, 384)
+    assert prepared.mode == "1"
+
+
+def test_escpos_black_pixel_bit_packing():
+    """Verify that black pixels become 1-bits and white pixels become 0-bits."""
+    # 8x1 image, explicit target_width=8
+    image = Image.new("1", (8, 1), 1)  # all white
+    image.putpixel((0, 0), 0)          # leftmost black (bit 7)
+    image.putpixel((7, 0), 0)          # rightmost black (bit 0)
+
+    payload = pil_to_escpos_raster(image, target_width=8)
+    # Init: 2 bytes, Header: 8 bytes, Data: 1 byte, Feed: 4 bytes
+    bitmap_byte = payload[10]
+    assert bitmap_byte == 0b10000001
 
 
 def test_print_endpoint_decodes_data_uri_and_returns_printer_result(monkeypatch):
-    image = Image.new("RGB", (8, 8), "white")
+    image = Image.new("RGB", (384, 200), "white")
     buffer = BytesIO()
     image.save(buffer, format="PNG")
     data_uri = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
@@ -65,10 +69,11 @@ def test_print_endpoint_decodes_data_uri_and_returns_printer_result(monkeypatch)
 
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    assert calls == [((8, 8), 50, 50, 2)]
+    assert calls == [((384, 200), 50, 50, 2)]
 
 
 def test_print_endpoint_rejects_invalid_image():
     response = TestClient(app).post("/api/print", json={"image_base64": "not base64"})
     assert response.status_code == 422
+
 

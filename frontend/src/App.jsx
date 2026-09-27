@@ -2,14 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 
 const exampleStudyPrompt = 'Make me a detailed labeled diagram of the IEM in the reference image including its internals as well'
 
-const history = [
-  { id: 1, title: 'Binary Search', desc: 'O(log n) · divide & conquer', mode: 'study', time: '09:41' },
-  { id: 2, title: 'Arduino Uno', desc: 'Rev3 ATmega328P board', mode: 'inventory', time: '09:28' },
-  { id: 3, title: 'Resistor 10kΩ', desc: '10k ohm 1/4W CFR', mode: 'inventory', time: '09:15' },
-  { id: 4, title: 'Merge Sort', desc: 'O(n log n) · stable', mode: 'study', time: '08:54' },
-  { id: 5, title: 'Raspberry Pi 4', desc: 'Model B 4GB LPDDR4', mode: 'product', time: '08:30' },
-]
-
 const modeNames = { study: 'Study', inventory: 'Inventory', product: 'Product', qr: 'QR Code' }
 const iconStroke = (color = 'var(--dim)') => ({ stroke: color, fill: 'none', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' })
 
@@ -32,7 +24,14 @@ function HistoryIcon() { return <svg width="15" height="15" viewBox="0 0 15 15">
 function SettingsIcon() { return <svg width="15" height="15" viewBox="0 0 15 15"><circle cx="7.5" cy="7.5" r="2" {...iconStroke()} /><path d="M7.5 1.5v2M7.5 11.5v2M1.5 7.5h2M11.5 7.5h2M3.4 3.4l1.4 1.4M10.2 10.2l1.4 1.4M11.6 3.4l-1.4 1.4M4.8 10.2l-1.4 1.4" {...iconStroke()} /></svg> }
 function BackIcon() { return <svg width="14" height="14" viewBox="0 0 14 14"><path d="M9 2.5L4.5 7 9 11.5" {...iconStroke()} /></svg> }
 function NextIcon() { return <svg width="12" height="12" viewBox="0 0 12 12"><path d="M4.5 2l3 4-3 4" {...iconStroke()} /></svg> }
-function RetryIcon() { return <svg width="14" height="14" viewBox="0 0 14 14"><path d="M12 7A5 5 0 1 1 9.5 3" {...iconStroke('var(--sub)')} /><path d="M9.5 3H12.5V6" {...iconStroke('var(--sub)')} /></svg> }
+
+function RetryIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+      <path d="M13.5 8A5.5 5.5 0 1 1 11 3.5M11 1.5v3.5h3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
 
 function SuccessIcon() {
   return <svg width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" {...iconStroke('var(--led-green)')} /><path d="M11 20l6.5 6.5 12-13" {...iconStroke('var(--led-green)')} strokeWidth="2" /></svg>
@@ -242,7 +241,7 @@ function Capture({ mode, inputMethod, onCapture, onBack }) {
   if (!isText) return <VoiceRecorder mode={mode} onCapture={onCapture} onBack={onBack} />
   const finishRecording = () => { if (recordState !== 'holding') return; setRecordState('done'); window.setTimeout(() => onCapture(exampleStudyPrompt), 600) }
   return <div className="screen"><Bar><StatusDot color="var(--led-blue)" pulse /><span className="bar-title status-title">{modeNames[mode]}</span>{inputMethod === 'camera+voice' && <span className="step-copy">· step 2 of 2</span>}<IconButton label="Close" className="close-button" onClick={onBack}>×</IconButton></Bar>
-    {isText ? <div className="center-body text-body"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Describe what to label…" /><button className="primary-button continue-button" disabled={!text.trim()} onClick={() => text.trim() && onCapture()}>Continue</button></div>
+    {isText ? <div className="center-body text-body"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Describe what to label…" /><button className="primary-button continue-button" disabled={!text.trim()} onClick={() => onCapture(text.trim())}>Continue</button></div>
       : <div className="center-body voice-body"><div className="voice-visual"><svg width="26" height="30" viewBox="0 0 26 30" fill="none"><rect x="7" y="2" width="12" height="16" rx="6" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" /><path d="M3 15c0 5.5 4.5 9 10 9s10-3.5 10-9" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" strokeLinecap="round" /><line x1="13" y1="24" x2="13" y2="29" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" strokeLinecap="round" /></svg>
           <div className={recordState === 'holding' ? 'wave waveform' : 'waveform'}>{[6, 12, 20, 26, 20, 12, 6].map((height, index) => <span key={index} style={{ height: recordState === 'holding' ? height : 4 }} />)}</div></div>
         <button className={`primary-button record-button ${recordState}`} onPointerDown={() => setRecordState('holding')} onPointerUp={finishRecording} onPointerCancel={finishRecording} onPointerLeave={finishRecording}>{recordState === 'done' ? 'Captured' : recordState === 'holding' ? 'Recording…' : 'Hold to Record'}</button>
@@ -262,13 +261,13 @@ const previews = {
   qr: { title: 'printsensei.local', desc: 'Local network resource link' },
 }
 
-function Preview({ mode, onEdit, onPrint, generatedImage, isPrinting, printError }) {
-  const { title, desc } = previews[mode]
+function Preview({ mode, onEdit, onPrint, generatedImage, isPrinting, printError, transcript }) {
+  const previewItem = previews[mode] || { title: 'PrintSensei Label', desc: transcript || 'Ready to print' }
+  const title = transcript || previewItem.title
+  const desc = previewItem.desc
   const date = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase()
-  const displayTitle = generatedImage ? 'Generated study diagram' : title
-  const displayDesc = generatedImage ? 'Ready to download and print' : desc
   if (generatedImage) return <div className="screen"><Bar><span className="bar-title">Study image</span><span className="bar-meta">Ready</span></Bar><div className="center-body preview-body"><img className="generated-image" src={generatedImage} alt="Generated study diagram" /><div className="preview-actions"><button className="ghost-button" disabled={isPrinting} onClick={onEdit}>Edit</button><button className="primary-button" disabled={isPrinting} onClick={onPrint}>{isPrinting ? 'Sending…' : 'Print'}</button></div>{printError && <span className="voice-error">{printError}</span>}</div></div>
-  return <div className="screen"><Bar><span className="bar-title">Preview</span><span className="bar-meta">{modeNames[mode]}</span></Bar><div className="center-body preview-body"><div className="label-preview"><div className="label-main"><div className="label-copy"><div className="label-title">{title}</div><div className="label-desc">{desc}</div></div><div className="qr-box"><QrIcon /></div></div><div className="label-footer mono">PRINTSENSEI · {date} · 62×29MM</div></div></div><div className="preview-actions"><button className="ghost-button" onClick={onEdit}>Edit</button><button className="primary-button" onClick={onPrint}>Print</button></div></div>
+  return <div className="screen"><Bar><span className="bar-title">Preview</span><span className="bar-meta">{modeNames[mode]}</span></Bar><div className="center-body preview-body"><div className="label-preview"><div className="label-main"><div className="label-copy"><div className="label-title">{title}</div><div className="label-desc">{desc}</div></div><div className="qr-box"><QrIcon /></div></div><div className="label-footer mono">PRINTSENSEI · {date} · 58MM</div></div><div className="preview-actions"><button className="ghost-button" disabled={isPrinting} onClick={onEdit}>Edit</button><button className="primary-button" disabled={isPrinting} onClick={onPrint}>{isPrinting ? 'Sending…' : 'Print'}</button></div>{printError && <span className="voice-error">{printError}</span>}</div></div>
 }
 
 function Printing({ onDone }) {
@@ -279,14 +278,46 @@ function Printing({ onDone }) {
 function Settings({ onBack }) {
   const rows = [
     { icon: <WifiIcon on />, label: 'Wi-Fi', value: 'PrintNet_5G' },
-    { icon: <PrinterIcon on />, label: 'Printer', value: 'Brother QL-800' },
+    { icon: <PrinterIcon on />, label: 'Printer', value: 'POSIFLOW 58D' },
     { icon: <CameraIcon on />, label: 'Camera', value: 'Pi Camera v2' },
   ]
-  return <div className="screen"><Bar><IconButton label="Back" onClick={onBack}><BackIcon /></IconButton><span className="bar-title title-after-back">Settings</span></Bar><div className="settings-list scroll-hidden">{rows.map((row) => <button className="settings-row" key={row.label}>{row.icon}<span>{row.label}</span><small>{row.value}</small><NextIcon /></button>)}<div className="brightness"><div><span>Brightness</span><small>80%</small></div><div className="brightness-track"><div className="brightness-fill" /><i /></div></div><button className="settings-row about-row"><span>About</span><small className="mono">v1.0.0 · RPi 4B</small><NextIcon /></button></div></div>
+  return <div className="screen"><Bar><IconButton label="Back" onClick={onBack}><BackIcon /></IconButton><span className="bar-title title-after-back">Settings</span></Bar><div className="settings-list scroll-hidden">{rows.map((row) => <button className="settings-row" key={row.label}>{row.icon}<span>{row.label}</span><small>{row.value}</small><NextIcon /></button>)}<div className="brightness"><div><span>Brightness</span><small>80%</small></div><div className="brightness-track"><div className="brightness-fill" /><i /></div></div><button className="settings-row about-row"><span>About</span><small className="mono">v1.0.0 · RPi 5</small><NextIcon /></button></div></div>
 }
 
-function History({ onBack, onReprint }) {
-  return <div className="screen"><Bar><IconButton label="Back" onClick={onBack}><BackIcon /></IconButton><span className="bar-title title-after-back">History</span><span className="history-count">{history.length} labels</span></Bar><div className="history-list scroll-hidden">{history.map((item) => <div className="history-row" key={item.id}><div className="history-copy"><div>{item.title}</div><span>{item.desc}</span></div><span className="mono history-time">{item.time}</span><IconButton label={`Reprint ${item.title}`} onClick={() => onReprint(item)}><RetryIcon /></IconButton></div>)}</div></div>
+function History({ onBack, onReprint, items = [], isPrinting = false }) {
+  return (
+    <div className="screen">
+      <Bar>
+        <IconButton label="Back" onClick={onBack}><BackIcon /></IconButton>
+        <span className="bar-title title-after-back">History</span>
+        <span className="history-count">{items.length} {items.length === 1 ? 'label' : 'labels'}</span>
+      </Bar>
+      <div className="history-list scroll-hidden">
+        {items.length === 0 ? (
+          <div className="center-body" style={{ color: 'var(--dim)', fontSize: 'var(--fs-xs)', height: '140px' }}>
+            No print history yet
+          </div>
+        ) : (
+          items.map((item) => (
+            <div className="history-row" key={item.id}>
+              <div className="history-copy">
+                <div>{item.title}</div>
+                <span>{item.desc}</span>
+              </div>
+              <span className="mono history-time">{item.time}</span>
+              <IconButton
+                label={`Reprint ${item.title}`}
+                disabled={isPrinting}
+                onClick={() => onReprint(item)}
+              >
+                <RetryIcon />
+              </IconButton>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
 }
 
 function useDisplayScale() {
@@ -310,8 +341,32 @@ export default function App() {
   const [printError, setPrintError] = useState('')
   const [isPrinting, setIsPrinting] = useState(false)
   const [voiceTranscript, setVoiceTranscript] = useState('')
+  const [historyItems, setHistoryItems] = useState([])
   const scale = useDisplayScale()
   const go = useCallback((next) => setScreen(next), [])
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const response = await fetch('/api/history')
+      if (response.ok) {
+        const data = await response.json()
+        if (Array.isArray(data)) {
+          setHistoryItems(data)
+        }
+      }
+    } catch {
+      // Fallback silently if offline
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchHistory()
+  }, [fetchHistory])
+
+  const openHistory = () => {
+    fetchHistory()
+    go('history')
+  }
 
   const generateStudyImage = async (prompt = exampleStudyPrompt) => {
     setGenerationError('')
@@ -320,38 +375,148 @@ export default function App() {
       const response = await fetch('/study/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, image_data: referenceImage }),
+        body: JSON.stringify({ prompt: prompt || exampleStudyPrompt, image_data: referenceImage }),
       })
       const data = await response.json()
       if (!response.ok) throw new Error(data.detail || 'Unable to generate the image.')
       setGeneratedImage(data.image_url)
+      fetchHistory()
       go('preview')
     } catch (error) {
       setGenerationError(error.message || 'Unable to generate the image.')
     }
   }
 
-  const printGeneratedImage = async () => {
-    if (!generatedImage) return
+  const printCurrentLabel = async (reprintItem = null) => {
     setPrintError('')
     setIsPrinting(true)
     try {
-      const imageResponse = await fetch(generatedImage)
-      if (!imageResponse.ok) throw new Error('Could not read the generated image.')
-      const imageBlob = await imageResponse.blob()
-      const base64Image = await new Promise((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(reader.result)
-        reader.onerror = () => reject(new Error('Could not prepare the image for printing.'))
-        reader.readAsDataURL(imageBlob)
-      })
+      let base64Image = ''
+      let itemTitle = ''
+      let itemDesc = ''
+      let itemMode = mode
+      let targetImageUrl = null
+
+      if (reprintItem) {
+        itemTitle = reprintItem.title
+        itemDesc = reprintItem.desc
+        itemMode = reprintItem.mode || mode
+        targetImageUrl = reprintItem.image_url || reprintItem.imageUrl
+
+        if (reprintItem.imageBase64) {
+          base64Image = reprintItem.imageBase64
+        } else if (targetImageUrl) {
+          const imageResponse = await fetch(targetImageUrl)
+          if (!imageResponse.ok) throw new Error('Could not read the history diagram image.')
+          const imageBlob = await imageResponse.blob()
+          base64Image = await new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result)
+            reader.onerror = () => reject(new Error('Could not prepare the image for printing.'))
+            reader.readAsDataURL(imageBlob)
+          })
+        } else {
+          const currentMode = reprintItem.mode || mode
+          const previewItem = previews[currentMode] || { title: 'PrintSensei Label', desc: 'Ready to print' }
+          const title = reprintItem.title || previewItem.title
+          const desc = reprintItem.desc || previewItem.desc
+          const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase()
+          
+          const renderRes = await fetch('/render', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: title,
+              subtitle: modeNames[currentMode] || 'PrintSensei',
+              body: desc,
+              date: dateStr,
+              qr_data: 'http://printsensei.local',
+              template: currentMode,
+              label_type: currentMode,
+            }),
+          })
+          const renderData = await renderRes.json()
+          if (!renderRes.ok) throw new Error(renderData.detail || 'Could not render label.')
+          targetImageUrl = `/${renderData.file}`
+          const imageResponse = await fetch(targetImageUrl)
+          if (!imageResponse.ok) throw new Error('Could not read the rendered label image.')
+          const imageBlob = await imageResponse.blob()
+          base64Image = await new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result)
+            reader.onerror = () => reject(new Error('Could not prepare the image for printing.'))
+            reader.readAsDataURL(imageBlob)
+          })
+        }
+      } else if (generatedImage) {
+        itemTitle = voiceTranscript || 'BMW Engine Overview'
+        itemDesc = 'AI generated diagram'
+        itemMode = 'study'
+        targetImageUrl = generatedImage
+        const imageResponse = await fetch(generatedImage)
+        if (!imageResponse.ok) throw new Error('Could not read the generated image.')
+        const imageBlob = await imageResponse.blob()
+        base64Image = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result)
+          reader.onerror = () => reject(new Error('Could not prepare the image for printing.'))
+          reader.readAsDataURL(imageBlob)
+        })
+      } else {
+        const currentMode = mode
+        const previewItem = previews[currentMode] || { title: 'PrintSensei Label', desc: 'Ready to print' }
+        const title = voiceTranscript || previewItem.title
+        const desc = previewItem.desc
+        itemTitle = title
+        itemDesc = desc
+        itemMode = currentMode
+        const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase()
+        
+        const renderRes = await fetch('/render', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: title,
+            subtitle: modeNames[currentMode] || 'PrintSensei',
+            body: desc,
+            date: dateStr,
+            qr_data: 'http://printsensei.local',
+            template: currentMode,
+            label_type: currentMode,
+          }),
+        })
+        const renderData = await renderRes.json()
+        if (!renderRes.ok) throw new Error(renderData.detail || 'Could not render label.')
+        targetImageUrl = `/${renderData.file}`
+        const imageResponse = await fetch(targetImageUrl)
+        if (!imageResponse.ok) throw new Error('Could not read the rendered label image.')
+        const imageBlob = await imageResponse.blob()
+        base64Image = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result)
+          reader.onerror = () => reject(new Error('Could not prepare the image for printing.'))
+          reader.readAsDataURL(imageBlob)
+        })
+      }
+
       const response = await fetch('/api/print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_base64: base64Image, label_width_mm: 50, label_height_mm: 50, gap_mm: 2 }),
+        body: JSON.stringify({
+          image_base64: base64Image,
+          label_width_mm: 50,
+          label_height_mm: 50,
+          gap_mm: 2,
+          title: itemTitle,
+          desc: itemDesc,
+          mode: itemMode,
+          image_url: targetImageUrl,
+        }),
       })
       const data = await response.json()
       if (!response.ok) throw new Error(data.detail || 'The printer rejected the print job.')
+
+      fetchHistory()
       go('printing')
     } catch (error) {
       setPrintError(error.message || 'Could not send the print job.')
@@ -362,7 +527,7 @@ export default function App() {
 
   useEffect(() => {
     if (screen !== 'processing' || mode === 'study' || generationError) return undefined
-    const timer = window.setTimeout(() => go('preview'), 2600)
+    const timer = window.setTimeout(() => go('preview'), 2000)
     return () => window.clearTimeout(timer)
   }, [screen, mode, generationError, go])
 
@@ -372,16 +537,17 @@ export default function App() {
       case 'mode-select': return <ModeSelect onSelect={(value) => { setMode(value); go('input-method') }} onBack={() => go('home')} onSettings={() => go('settings')} />
       case 'input-method': return <InputMethod mode={mode} onSelect={selectMethod} onBack={() => go('mode-select')} />
       case 'camera-capture': return <CameraCapture onCaptured={(image) => { setReferenceImage(image); go('capture') }} onBack={() => go('input-method')} />
-      case 'capture': return <Capture mode={mode} inputMethod={inputMethod} onCapture={(text) => { setVoiceTranscript(text || document.querySelector('.text-body textarea')?.value || ''); go('voice-result') }} onBack={() => go('input-method')} />
-      case 'voice-result': return <VoiceResult transcript={voiceTranscript} hasReferenceImage={Boolean(referenceImage)} onBack={() => go('home')} onGenerate={() => mode === 'study' ? generateStudyImage(voiceTranscript) : go('processing')} />
+      case 'capture': return <Capture mode={mode} inputMethod={inputMethod} onCapture={(text) => { setVoiceTranscript(text || ''); go('voice-result') }} onBack={() => go('input-method')} />
+      case 'voice-result': return <VoiceResult transcript={voiceTranscript} hasReferenceImage={Boolean(referenceImage)} onBack={() => go('home')} onGenerate={() => mode === 'study' ? generateStudyImage(voiceTranscript) : go('preview')} />
       case 'processing': return <Processing onCancel={() => go('home')} error={generationError} />
-      case 'preview': return <Preview mode={mode} generatedImage={generatedImage} isPrinting={isPrinting} printError={printError} onEdit={() => go('capture')} onPrint={generatedImage ? printGeneratedImage : () => go('printing')} />
+      case 'preview': return <Preview mode={mode} transcript={voiceTranscript} generatedImage={generatedImage} isPrinting={isPrinting} printError={printError} onEdit={() => go('capture')} onPrint={() => printCurrentLabel()} />
       case 'printing': return <Printing onDone={() => go('home')} />
       case 'settings': return <Settings onBack={() => go('home')} />
-      case 'history': return <History onBack={() => go('home')} onReprint={(item) => { setMode(item.mode); go('printing') }} />
-      default: return <Home onStart={() => go('mode-select')} onSettings={() => go('settings')} onHistory={() => go('history')} />
+      case 'history': return <History items={historyItems} isPrinting={isPrinting} onBack={() => go('home')} onReprint={(item) => printCurrentLabel(item)} />
+      default: return <Home onStart={() => go('mode-select')} onSettings={() => go('settings')} onHistory={openHistory} />
     }
   }
 
   return <main className="lcd-viewport"><div className="lcd-screen" style={{ transform: `scale(${scale})` }}>{renderScreen()}</div></main>
 }
+

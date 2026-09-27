@@ -21,7 +21,11 @@ app.add_middleware(
 
 app.include_router(router)
 Path("diagram_images").mkdir(exist_ok=True)
+Path("generated_labels").mkdir(exist_ok=True)
 app.mount("/generated-images", StaticFiles(directory="diagram_images"), name="generated-images")
+app.mount("/generated_labels", StaticFiles(directory="generated_labels"), name="generated_labels")
+app.mount("/generated-labels", StaticFiles(directory="generated_labels"), name="generated-labels")
+
 
 
 @app.on_event("startup")

@@ -15,9 +15,11 @@ __pycache__/
 .env.*
 !.env.example
 
-*.db
+app/database/
+history.json
 
 generated_labels/
+diagram_images/
 
 temporary/
 

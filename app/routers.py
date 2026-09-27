@@ -18,6 +18,7 @@ from backend.engines.diagram.service import DiagramService
 from backend.services.speech import get_speech_service
 from shared.config import APP_NAME, APP_VERSION, MODE, HARDWARE_MODE
 from app.services.printer import print_label
+from app.services.history import get_all_history, add_history_entry
 from io import BytesIO
 from PIL import Image, UnidentifiedImageError
 
@@ -31,6 +32,16 @@ class HardwarePrintRequest(BaseModel):
     label_width_mm: int = Field(default=50, ge=10, le=120)
     label_height_mm: int = Field(default=50, ge=10, le=300)
     gap_mm: int = Field(default=2, ge=0, le=20)
+    title: str | None = None
+    desc: str | None = None
+    mode: str | None = None
+    image_url: str | None = None
+
+
+@router.get("/api/history")
+def get_print_history():
+    """Return persistent print history synced with all real printed diagrams and labels."""
+    return get_all_history()
 
 
 @router.post("/api/print")
@@ -47,6 +58,13 @@ def print_hardware_label(payload: HardwarePrintRequest):
     success, message = print_label(image, payload.label_width_mm, payload.label_height_mm, payload.gap_mm)
     if not success:
         raise HTTPException(status_code=502, detail=f"Printer error: {message}")
+
+    add_history_entry(
+        title=payload.title or "Printed Label",
+        desc=payload.desc or "PrintSensei Label",
+        mode=payload.mode or "study",
+        image_url=payload.image_url,
+    )
     return {"status": "success", "message": message}
 
 
