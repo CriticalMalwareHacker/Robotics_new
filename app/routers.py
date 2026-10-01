@@ -302,6 +302,43 @@ def release_camera():
     return {"status": "released"}
 
 
+@router.get("/api/camera/list")
+def list_cameras():
+    """Probe indexes 0-2 and report which one delivers real (non-black) frames.
+
+    Use this to pick CAMERA_INDEX: the Hikvision is the index with plausible
+    resolution and mean brightness well above 0. Tells the server choice via
+    `active_hint` (the env override, if set).
+    """
+    import os
+
+    import cv2
+
+    found = []
+    for idx in [0, 1, 2]:
+        cap = cv2.VideoCapture(idx)
+        if not cap.isOpened():
+            cap.release()
+            found.append({"index": idx, "present": False})
+            continue
+        frame = None
+        for _ in range(15):  # discard warm-up frames (DSHOW starts black)
+            ok, candidate = cap.read()
+            if ok and candidate is not None:
+                frame = candidate
+        cap.release()
+        if frame is None:
+            found.append({"index": idx, "present": True, "frames": False})
+            continue
+        h, w = frame.shape[:2]
+        found.append({"index": idx, "present": True, "frames": True,
+                      "width": w, "height": h,
+                      "mean_brightness": round(float(frame.mean()), 1)})
+    forced = os.getenv("CAMERA_INDEX", "").strip()
+    return {"active_hint": int(forced) if forced.isdigit() else None,
+            "cameras": found}
+
+
 @router.post("/simulate", response_model=SimulateResponse)
 def simulate_print_request(payload: SimulateRequest):
     print_request, label_data = create_fake_print_request(payload.text)
