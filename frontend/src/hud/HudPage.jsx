@@ -49,6 +49,14 @@ export default function HudPage() {
 
   useEffect(() => { document.title = 'PrintSensei robot HUD' }, [])
 
+  // No global preflight on this project; remove the body gutter while the
+  // HUD is mounted and restore it on exit (existing pages unaffected).
+  useEffect(() => {
+    const prev = document.body.style.margin
+    document.body.style.margin = '0'
+    return () => { document.body.style.margin = prev }
+  }, [])
+
   return (
     <div className={`hud-root ${theme}`}>
       <Toaster position="bottom-right" theme={theme} />

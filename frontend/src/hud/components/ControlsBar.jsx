@@ -53,7 +53,7 @@ export default function ControlsBar({ driveEnabled, autoRunning, estopActive, on
   const spin = (key) => busy === key && <Loader2 className="animate-spin" aria-hidden />
 
   return (
-    <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t border-border bg-background px-4 py-3 lg:static">
+    <div className="sticky bottom-0 z-40 flex flex-wrap items-center gap-2 border-t border-border bg-background px-4 py-3">
       {driveEnabled ? (
         <Button disabled={busy != null || autoRunning} onClick={startAuto}>
           {spin('auto')} Start auto

@@ -16,7 +16,7 @@ export default function OverlayLayer({ frame, parking, show, faded }) {
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
+      preserveAspectRatio="xMidYMid meet"
       aria-hidden
       className="pointer-events-none absolute inset-0 h-full w-full"
       style={faded ? { opacity: 0.4 } : undefined}

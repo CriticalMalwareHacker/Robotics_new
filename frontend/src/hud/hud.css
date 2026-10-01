@@ -48,6 +48,13 @@
 .hud-root h1, .hud-root h2, .hud-root h3 { line-height: 1.2; }
 .hud-root p { line-height: 1.4; }
 
+/* No preflight on this project, so form controls would fall back to the
+ * browser font. Inherit the HUD typeface explicitly. */
+.hud-root button, .hud-root input, .hud-root select, .hud-root textarea {
+  font: inherit;
+  color: inherit;
+}
+
 /* Semantic colors (meaning only, never decoration). */
 .hud-ok { color: #16A34A; }
 .hud-root.dark .hud-ok { color: #22C55E; }
