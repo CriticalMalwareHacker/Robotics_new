@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-import fcntl
+try:
+    import fcntl  # POSIX only (Pi/Linux); absent on Windows laptops
+except ImportError:  # pragma: no cover - laptop fallback, Pi keeps real fcntl
+    fcntl = None  # type: ignore[assignment]
 import logging
 import os
 import shutil
@@ -101,6 +104,8 @@ def pil_to_escpos_raster(image: Image.Image, target_width: int = THERMAL_PRINT_W
 
 def _reset_usb_device(dev) -> bool:
     """Reset USB device via USBDEVFS_RESET ioctl to clear hardware bus halts."""
+    if fcntl is None:
+        return False  # non-POSIX host (e.g. Windows laptop): nothing to reset
     try:
         bus = dev.bus
         address = dev.address
