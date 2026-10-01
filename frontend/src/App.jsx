@@ -76,7 +76,7 @@ function Home({ onStart, onSettings, onHistory }) {
       <div className="ready-copy"><div className="ready-title">Ready</div><div className="ready-subtitle" /></div>
       <button className="primary-button start-button" onClick={onStart}>Tap to Start</button>
     </div>
-    <div className="home-footer"><span className="mono" /></div>
+    <div className="home-footer"><span className="mono" /><a className="mono" href="/hud">Robot HUD →</a></div>
   </div>
 }
 

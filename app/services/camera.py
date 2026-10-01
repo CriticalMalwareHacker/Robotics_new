@@ -22,6 +22,8 @@ class CameraManager:
         self._cap: cv2.VideoCapture | None = None
         self._latest_jpeg: bytes | None = None
         self._latest_frame_bgr: any = None
+        self._frame_id: int = 0
+        self._latest_shape: tuple[int, int] | None = None  # (width, height)
         self._last_access: float = 0
         self._running: bool = False
         self._worker_thread: threading.Thread | None = None
@@ -69,6 +71,8 @@ class CameraManager:
                     with self._lock:
                         self._latest_jpeg = jpeg.tobytes()
                         self._latest_frame_bgr = frame.copy()
+                        self._frame_id += 1
+                        self._latest_shape = (int(frame.shape[1]), int(frame.shape[0]))
 
                 time.sleep(0.03)
         finally:
@@ -84,6 +88,14 @@ class CameraManager:
                 self._running = True
                 self._worker_thread = threading.Thread(target=self._worker, daemon=True)
                 self._worker_thread.start()
+
+    def get_frame_meta(self) -> dict:
+        """Frame id + size for HUD overlay sync (additive; jpeg path untouched)."""
+        self.ensure_started()
+        with self._lock:
+            w, h = self._latest_shape or (0, 0)
+            return {"id": self._frame_id, "width": w, "height": h,
+                    "available": self._latest_jpeg is not None}
 
     def get_latest_jpeg(self) -> bytes | None:
         self.ensure_started()

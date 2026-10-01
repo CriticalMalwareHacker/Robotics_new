@@ -89,3 +89,24 @@ def frame():
                          np.asarray(cfg["homography_px_to_cm"]))
     return Response(content=encode_jpeg(annotated), media_type="image/jpeg",
                     headers=dict(_NO_CACHE))
+
+
+@router.get("/api/parking/stream")
+def stream():
+    """MJPEG multipart stream for the HUD <img>. Falls back to /frame polling."""
+    from fastapi.responses import StreamingResponse
+
+    from app.services.camera import camera_manager
+
+    def gen():
+        import time
+        while True:
+            jpeg = camera_manager.get_latest_jpeg()
+            if jpeg is not None:
+                yield (b"--frame\r\nContent-Type: image/jpeg\r\n"
+                       b"Content-Length: " + str(len(jpeg)).encode() +
+                       b"\r\n\r\n" + jpeg + b"\r\n")
+            time.sleep(0.1)
+
+    return StreamingResponse(gen(),
+                             media_type="multipart/x-mixed-replace; boundary=frame")

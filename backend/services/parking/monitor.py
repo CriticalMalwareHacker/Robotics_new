@@ -15,6 +15,7 @@ import cv2
 import numpy as np
 
 from .analyzer import analyze_frame, load_slots
+from . import events
 from .models import ParkingAnalysis, Slot
 from .parking_geometry import ViolationDebouncer
 from .vehicle_detector import ClassicalDetector, NullDetector
@@ -25,6 +26,7 @@ _state: dict = {
     "running": False,
     "thread": None,
     "last_analysis": None,
+    "last_detections": [],
     "debounced": {},
     "analyses": 0,
 }
@@ -73,9 +75,16 @@ def _loop(provider: Callable[[], np.ndarray | None], interval_s: float) -> None:
                                               r.violation.value != "LEGAL")
                      for r in analysis.results}
             with _lock:
+                prev = dict(_state["debounced"])
                 _state["last_analysis"] = analysis
+                _state["last_detections"] = list(dets)
                 _state["debounced"] = flags
                 _state["analyses"] += 1
+            by_id = {r.vehicle_id: r for r in analysis.results}
+            for vid, active in flags.items():
+                if active and not prev.get(vid):  # rising edge only
+                    slot = by_id[vid].slot_id or "unknown slot"
+                    events.log("warn", f"Violation found in slot {slot}.")
         except Exception as exc:  # never kill the app on a bad frame
             logger.warning("monitor tick failed: %s", exc)
         time.sleep(interval_s)
@@ -113,4 +122,5 @@ def status() -> dict:
             "analyses_served": _state["analyses"],
             "debounced": dict(_state["debounced"]),
             "last_analysis": last,
+            "last_detections": list(_state["last_detections"]),
         }

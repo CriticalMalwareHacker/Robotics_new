@@ -1,0 +1,78 @@
+@tailwind components;
+@tailwind utilities;
+
+/* HUD-only tokens. Scoped under .hud-root so the existing LCD pages are untouched.
+ * Light defaults here; .dark overrides below. Palette from the HUD spec. */
+.hud-root {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 9%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 9%;
+  --muted: 0 0% 96.1%;
+  --muted-foreground: 0 0% 45.1%;
+  --border: 0 0% 89.8%;
+  --primary: 221.2 83.2% 53.3%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 0 0% 96.1%;
+  --secondary-foreground: 0 0% 9%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --accent: 0 0% 96.1%;
+  --accent-foreground: 0 0% 9%;
+  --radius: 0.5rem;
+
+  font-family: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  min-height: 100dvh;
+}
+
+.hud-root.dark {
+  --background: 240 10% 3.9%;      /* #09090B */
+  --foreground: 0 0% 98%;
+  --card: 240 7% 6%;               /* #0F0F12 */
+  --card-foreground: 0 0% 98%;
+  --muted: 240 4% 12%;
+  --muted-foreground: 240 5% 65%;  /* #A1A1AA */
+  --border: 240 4% 16%;            /* #27272A */
+  --primary: 217.2 91.2% 59.8%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 240 4% 16%;
+  --secondary-foreground: 0 0% 98%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --accent: 240 4% 16%;
+  --accent-foreground: 0 0% 98%;
+}
+
+.hud-root h1, .hud-root h2, .hud-root h3 { line-height: 1.2; }
+.hud-root p { line-height: 1.4; }
+
+/* Semantic colors (meaning only, never decoration). */
+.hud-ok { color: #16A34A; }
+.hud-root.dark .hud-ok { color: #22C55E; }
+.hud-warn { color: #D97706; }
+.hud-root.dark .hud-warn { color: #F59E0B; }
+.hud-bad { color: #DC2626; }
+.hud-root.dark .hud-bad { color: #EF4444; }
+.hud-info { color: #2563EB; }
+.hud-root.dark .hud-info { color: #3B82F6; }
+.hud-dot-ok { background-color: #16A34A; }
+.hud-root.dark .hud-dot-ok { background-color: #22C55E; }
+.hud-dot-warn { background-color: #D97706; }
+.hud-root.dark .hud-dot-warn { background-color: #F59E0B; }
+.hud-dot-bad { background-color: #DC2626; }
+.hud-root.dark .hud-dot-bad { background-color: #EF4444; }
+.hud-dot-info { background-color: #2563EB; }
+.hud-root.dark .hud-dot-info { background-color: #3B82F6; }
+.hud-dot-muted { background-color: hsl(var(--muted-foreground)); }
+
+/* Changing numbers never jitter. */
+.tnum { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-root *, .hud-root *::before, .hud-root *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
