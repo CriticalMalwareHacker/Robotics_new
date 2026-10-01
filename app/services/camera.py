@@ -38,22 +38,32 @@ class CameraManager:
                 return idx
         return 0
 
-    def _worker(self):
-        logger.info("Starting background camera worker (LED turns BLUE)...")
-        dev_idx = self._get_device_index()
+    def _open_capture(self, dev_idx: int):
+        """Open the device and discard warm-up frames (DSHOW starts black)."""
         cap = cv2.VideoCapture(dev_idx, cv2.CAP_V4L2)
         if not cap.isOpened():
             cap = cv2.VideoCapture(dev_idx)
+        if cap.isOpened():
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            cap.set(cv2.CAP_PROP_FPS, 30)
+            for _ in range(10):
+                cap.read()
+        return cap
+
+    def _worker(self):
+        logger.info("Starting background camera worker (LED turns BLUE)...")
+        dev_idx = self._get_device_index()
+        cap = self._open_capture(dev_idx)
 
         if not cap.isOpened():
             logger.error("Could not open USB camera.")
+            cap.release()
             self._running = False
             return
 
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        cap.set(cv2.CAP_PROP_FPS, 30)
         self._cap = cap
+        bad = 0
 
         try:
             while self._running:
@@ -63,9 +73,27 @@ class CameraManager:
                     break
 
                 ret, frame = cap.read()
-                if not ret or frame is None:
-                    time.sleep(0.03)
+                if not ret or frame is None or float(frame.mean()) < 0.5:
+                    bad += 1
+                    if bad >= 60:
+                        # Dead stream (stuck black): reopen instead of serving black forever.
+                        logger.warning("Camera stream dead, reopening device...")
+                        try:
+                            cap.release()
+                        except Exception:
+                            pass
+                        time.sleep(1.0)
+                        cap = self._open_capture(dev_idx)
+                        self._cap = cap
+                        bad = 0
+                        if not cap.isOpened():
+                            logger.error("Camera reopen failed.")
+                            cap.release()
+                            break
+                    else:
+                        time.sleep(0.03)
                     continue
+                bad = 0
 
                 success, jpeg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                 if success:
