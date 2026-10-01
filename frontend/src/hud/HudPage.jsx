@@ -74,7 +74,7 @@ export default function HudPage() {
           parking={parking}
           fetchedAt={fetchedAt}
           backendOnline={online}
-          cameraOnline={state?.devices?.camera === 'ok'}
+          cameraState={state?.devices?.camera || 'offline'}
           onRetry={refresh}
         />
         <div className="flex flex-col gap-6">

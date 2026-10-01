@@ -9,7 +9,9 @@ import OverlayLayer from './OverlayLayer'
 
 /* Live feed: MJPEG stream <img>, falling back to polled frames on error.
  * Overlay is client-side SVG synced by poll age (fades past 1 s). */
-export default function CameraFeed({ frame, parking, fetchedAt, backendOnline, cameraOnline, onRetry }) {
+export default function CameraFeed({ frame, parking, fetchedAt, backendOnline, cameraState, onRetry }) {
+  const cameraOnline = cameraState === 'ok'
+  const cameraDegraded = cameraState === 'degraded'
   const [useStream, setUseStream] = useState(true)
   const [streamOk, setStreamOk] = useState(true)
   const [pollSrc, setPollSrc] = useState(frameUrl())
@@ -43,7 +45,11 @@ export default function CameraFeed({ frame, parking, fetchedAt, backendOnline, c
         {!backendOnline && <Skeleton className="absolute inset-0 h-full w-full rounded-none" />}
         {backendOnline && !cameraOnline && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center">
-            <p className="text-sm text-muted-foreground">Camera not found. Check the cable, then press Retry.</p>
+            <p className="text-sm text-muted-foreground">
+              {cameraDegraded
+                ? 'Camera is open but the image is black. Remove the lens cover and close any other app using the camera (browser tabs, video calls), then press Retry.'
+                : 'Camera not found. Check the cable, then press Retry.'}
+            </p>
             <Button variant="outline" size="sm" onClick={retry}>Retry</Button>
           </div>
         )}

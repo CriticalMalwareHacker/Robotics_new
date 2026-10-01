@@ -37,9 +37,15 @@ def _cm_to_px(poly_cm: list[list[float]], h_inv: np.ndarray) -> list[list[int]]:
 def _devices() -> dict:
     try:
         from app.services.camera import camera_manager
-        cam = camera_manager.get_frame_meta()["available"]
+        meta_now = camera_manager.get_frame_meta()
+        if not meta_now.get("available"):
+            cam = "offline"
+        elif (meta_now.get("brightness") or 0) < 3:
+            cam = "degraded"  # device open but image black: cover, lens, or another app
+        else:
+            cam = "ok"
     except Exception:
-        cam = False
+        cam = "offline"
     printer = "offline"
     try:
         if Path("/dev/usb/lp0").exists():
@@ -50,7 +56,7 @@ def _devices() -> dict:
         pass
     link = _robot_link()
     return {
-        "camera": "ok" if cam else "offline",
+        "camera": cam,
         "arduino": link,  # ok | offline | simulated
         "ultrasonic": "offline",  # sensor arrives with the Arduino phase
         "printer": printer,

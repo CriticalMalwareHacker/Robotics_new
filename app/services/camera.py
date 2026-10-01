@@ -24,6 +24,7 @@ class CameraManager:
         self._latest_frame_bgr: any = None
         self._frame_id: int = 0
         self._latest_shape: tuple[int, int] | None = None  # (width, height)
+        self._last_brightness: float = 0.0  # mean pixel value; ~0 means black frames
         self._last_access: float = 0
         self._running: bool = False
         self._worker_thread: threading.Thread | None = None
@@ -73,6 +74,7 @@ class CameraManager:
                         self._latest_frame_bgr = frame.copy()
                         self._frame_id += 1
                         self._latest_shape = (int(frame.shape[1]), int(frame.shape[0]))
+                        self._last_brightness = float(frame.mean())
 
                 time.sleep(0.03)
         finally:
@@ -90,12 +92,14 @@ class CameraManager:
                 self._worker_thread.start()
 
     def get_frame_meta(self) -> dict:
-        """Frame id + size for HUD overlay sync (additive; jpeg path untouched)."""
+        """Frame id + size + brightness for HUD overlay sync and diagnostics."""
         self.ensure_started()
         with self._lock:
             w, h = self._latest_shape or (0, 0)
+            flowing = self._latest_jpeg is not None
             return {"id": self._frame_id, "width": w, "height": h,
-                    "available": self._latest_jpeg is not None}
+                    "available": flowing,
+                    "brightness": round(self._last_brightness, 1)}
 
     def get_latest_jpeg(self) -> bytes | None:
         self.ensure_started()
@@ -134,11 +138,24 @@ class CameraManager:
 camera_manager = CameraManager()
 
 
-def get_camera_status() -> dict[str, str | bool | int]:
+def get_camera_status() -> dict[str, str | bool | int | float]:
     idx = camera_manager._get_device_index()
     exists = Path(f"/dev/video{idx}").exists()
+    with camera_manager._lock:
+        flowing = camera_manager._latest_jpeg is not None
+        brightness = camera_manager._last_brightness
+    # /dev/video* only exists on Linux; on Windows/macOS the proof is frames.
+    available = exists or flowing
+    if flowing:
+        name = f"USB camera (index {idx})"
+    elif exists:
+        name = "Hikvision 1080P USB Camera"
+    else:
+        name = "None"
     return {
-        "available": exists,
-        "name": "Hikvision 1080P USB Camera" if exists else "None",
+        "available": available,
+        "name": name,
         "device_index": idx,
+        "frames_flowing": flowing,
+        "brightness": round(brightness, 1),
     }
