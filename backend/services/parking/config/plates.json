@@ -1,0 +1,8 @@
+{
+  "_note": "Fictional plates for the tabletop demo (no real vehicles). Consumed by plate_reader.py in Phase 6; analyzer passes through plate_hint until then.",
+  "plates": {
+    "MH01AB1234": {"vehicle_id": "CAR-01", "desc": "Red hatchback (test)"},
+    "DL02CD5678": {"vehicle_id": "CAR-02", "desc": "Blue sedan (test)"},
+    "KA03EF9012": {"vehicle_id": "CAR-03", "desc": "Yellow taxi toy (test)"}
+  }
+}
