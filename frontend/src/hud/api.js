@@ -1,6 +1,7 @@
 /* Typed HUD API client. Components never call fetch directly.
- * Base URL + key come from build-time env (VITE_API_URL, VITE_API_KEY);
- * no hardcoded hosts, no credentials in source. */
+ * Empty VITE_API_URL means same-origin relative calls (local dev via the
+ * vite proxy); a set value means absolute calls (Vercel -> tunnel/Pi).
+ * No hardcoded hosts, no credentials in source. */
 import { API_URL, API_KEY } from '../lib/api'
 
 function headers(extra = {}) {
@@ -10,7 +11,6 @@ function headers(extra = {}) {
 }
 
 async function request(path, options = {}) {
-  if (!API_URL) throw new Error('Backend address is not set.')
   const ctrl = new AbortController()
   const timer = window.setTimeout(() => ctrl.abort(), 8000)
   try {

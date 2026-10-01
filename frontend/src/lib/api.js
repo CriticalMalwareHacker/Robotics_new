@@ -1,8 +1,8 @@
-/* Remote-backend client for the deployed frontend.
- * Build-time config (Vite bakes VITE_* vars at `npm run build`, so rebuild
- * after changing them on your host):
- *   VITE_API_URL  e.g. https://printsensei.<tunnel>.trycloudflare.com
- *   VITE_API_KEY  same token as the Pi's API_KEY (empty = open dev backend)
+/* Backend client.
+ * VITE_API_URL set    -> absolute calls (Vercel -> tunnel/Pi).
+ * VITE_API_URL empty  -> same-origin relative calls (local `npm run dev`,
+ *   forwarded by the vite proxy). Relative is also what defeats mixed-content
+ *   blocking when the dev page is served over https.
  */
 
 export const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
@@ -15,7 +15,6 @@ function authHeaders(extra = {}) {
 }
 
 async function request(path, options = {}) {
-  if (!API_URL) throw new Error('VITE_API_URL is not set — point it at the Pi backend.')
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: authHeaders({ 'Content-Type': 'application/json', ...(options.headers || {}) }),
