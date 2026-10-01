@@ -1,12 +1,118 @@
 {
-  "_note": "Example table layout in centimetres. Overwritten by tools/calibrate_table.py (Phase 4/5). Mat origin = top-left corner marker.",
+  "_note": "Manual corner calibration. RE-MEASURE mat border if mat-width/height-cm are estimates; re-run this tool after any camera move.",
   "units": "cm",
-  "mat_size": [100, 70],
+  "mat_size": [
+    60.0,
+    45.0
+  ],
+  "image_size": [
+    1280,
+    720
+  ],
+  "corners_px_TL_TR_BR_BL": [
+    [
+      175.0,
+      105.0
+    ],
+    [
+      1130.0,
+      140.0
+    ],
+    [
+      1085.0,
+      650.0
+    ],
+    [
+      110.0,
+      665.0
+    ]
+  ],
+  "homography_px_to_cm": [
+    [
+      0.05618514628402719,
+      0.006521490193681729,
+      -10.51715707004134
+    ],
+    [
+      -0.0029376735757340668,
+      0.08015652185217241,
+      -7.902341918724642
+    ],
+    [
+      -9.2409997729913e-05,
+      1.791246477534928e-05,
+      1.0
+    ]
+  ],
   "slots": [
-    {"slot_id": "A1", "polygon": [[5, 5], [27, 5], [27, 17], [5, 17]], "angle_deg": 0, "restricted": false},
-    {"slot_id": "A2", "polygon": [[30, 5], [52, 5], [52, 17], [30, 17]], "angle_deg": 0, "restricted": false},
-    {"slot_id": "B1", "polygon": [[5, 25], [27, 25], [27, 37], [5, 37]], "angle_deg": 0, "restricted": false},
-    {"slot_id": "B2", "polygon": [[30, 25], [52, 25], [52, 37], [30, 37]], "angle_deg": 0, "restricted": false},
-    {"slot_id": "Z1", "polygon": [[60, 5], [95, 5], [95, 37], [60, 37]], "angle_deg": 0, "restricted": true}
+    {
+      "slot_id": "A1",
+      "polygon": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          16.2,
+          0.58
+        ],
+        [
+          18.55,
+          44.59
+        ],
+        [
+          0.0,
+          45.0
+        ]
+      ],
+      "angle_deg": 90.0,
+      "restricted": false
+    },
+    {
+      "slot_id": "A2",
+      "polygon": [
+        [
+          16.2,
+          0.58
+        ],
+        [
+          36.22,
+          0.44
+        ],
+        [
+          38.83,
+          44.75
+        ],
+        [
+          18.55,
+          44.59
+        ]
+      ],
+      "angle_deg": 90.0,
+      "restricted": false
+    },
+    {
+      "slot_id": "A3",
+      "polygon": [
+        [
+          36.22,
+          0.44
+        ],
+        [
+          60.0,
+          0.0
+        ],
+        [
+          60.0,
+          45.0
+        ],
+        [
+          38.83,
+          44.75
+        ]
+      ],
+      "angle_deg": 90.0,
+      "restricted": false
+    }
   ]
 }

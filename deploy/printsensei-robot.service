@@ -1,0 +1,17 @@
+[Unit]
+Description=PrintSensei backend (parking robot API + dashboard backend)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+# Adjust the path below to where you cloned the repo on the Pi:
+WorkingDirectory=/home/pi/AI-Robotics_PrintSensei
+EnvironmentFile=/home/pi/AI-Robotics_PrintSensei/.env
+ExecStart=/home/pi/AI-Robotics_PrintSensei/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

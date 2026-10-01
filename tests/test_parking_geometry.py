@@ -25,7 +25,27 @@ from backend.services.parking.parking_geometry import (
 
 @pytest.fixture(scope="module")
 def slots():
-    return {s.slot_id: s for s in load_slots()}
+    """Synthetic layout (self-contained: never depends on calibrated slots.json)."""
+    from backend.services.parking.models import Slot
+
+    def s(slot_id, x1, y1, x2, y2, restricted=False):
+        return Slot(slot_id=slot_id,
+                    polygon=[[x1, y1], [x2, y1], [x2, y2], [x1, y2]],
+                    angle_deg=0.0, restricted=restricted)
+
+    return {
+        "A1": s("A1", 5, 5, 27, 17),
+        "A2": s("A2", 30, 5, 52, 17),
+        "B1": s("B1", 5, 25, 27, 37),
+        "B2": s("B2", 30, 25, 52, 37),
+        "Z1": s("Z1", 60, 5, 95, 37, restricted=True),
+    }
+
+
+def test_calibrated_config_loads():
+    slots = load_slots()
+    assert {s.slot_id for s in slots} == {"A1", "A2", "A3"}
+    assert all(len(s.polygon) == 4 for s in slots)
 
 
 def det(vid, poly, angle=0.0, conf=0.9):
@@ -101,8 +121,8 @@ def test_no_parking_zone(slots):
     assert analysis.slot == "Z1"
 
 
-def test_empty_frame_is_valid():
-    analysis = analyze_frame([], load_slots())
+def test_empty_frame_is_valid(slots):
+    analysis = analyze_frame([], list(slots.values()))
     assert not analysis.vehicle_detected and analysis.parking_valid
     assert analysis.results == []
 

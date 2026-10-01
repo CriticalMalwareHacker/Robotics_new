@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import RoboticsPanel from './RoboticsPanel'
 
 const exampleStudyPrompt = 'Make me a detailed labeled diagram of the IEM in the reference image including its internals as well'
 
@@ -52,6 +53,7 @@ function TextIcon() {
 function StudyIcon() { return <svg width="22" height="22" viewBox="0 0 22 22"><rect x="3" y="3" width="16" height="16" rx="1.5" {...iconStroke('var(--sub)')} /><path d="M6 7.5h10M6 11h10M6 14.5h6" {...iconStroke('var(--sub)')} /></svg> }
 function InventoryIcon() { return <svg width="22" height="22" viewBox="0 0 22 22"><path d="M11 3L3 7v8l8 4 8-4V7L11 3z" {...iconStroke('var(--sub)')} /><path d="M3 7l8 4 8-4M11 11v8" {...iconStroke('var(--sub)')} /></svg> }
 function ProductIcon() { return <svg width="22" height="22" viewBox="0 0 22 22"><rect x="3" y="3" width="16" height="16" rx="1.5" {...iconStroke('var(--sub)')} /><path d="M6 8h10M6 11.5h6M14.5 14l2 2" {...iconStroke('var(--sub)')} /><circle cx="14" cy="13.5" r="2.5" {...iconStroke('var(--sub)')} /></svg> }
+function ParkingIcon() { return <svg width="22" height="22" viewBox="0 0 22 22"><rect x="3" y="3" width="16" height="16" rx="1.5" {...iconStroke('var(--sub)')} /><path d="M8 16V6h4a3 3 0 0 1 0 6H8" {...iconStroke('var(--sub)')} /></svg> }
 
 function QrIcon() {
   return <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="3" y="3" width="6" height="6" rx=".5" stroke="var(--sub)" strokeWidth="1.4" /><rect x="4.5" y="4.5" width="3" height="3" fill="var(--sub)" /><rect x="13" y="3" width="6" height="6" rx=".5" stroke="var(--sub)" strokeWidth="1.4" /><rect x="14.5" y="4.5" width="3" height="3" fill="var(--sub)" /><rect x="3" y="13" width="6" height="6" rx=".5" stroke="var(--sub)" strokeWidth="1.4" /><rect x="4.5" y="14.5" width="3" height="3" fill="var(--sub)" /><rect x="13" y="13" width="2.5" height="2.5" fill="var(--sub)" /><rect x="16.5" y="13" width="2.5" height="2.5" fill="var(--sub)" /><rect x="13" y="16.5" width="2.5" height="2.5" fill="var(--sub)" /><rect x="16.5" y="16.5" width="2.5" height="2.5" fill="var(--sub)" /></svg>
@@ -83,6 +85,7 @@ const modes = [
   { id: 'inventory', label: 'Inventory', Icon: InventoryIcon },
   { id: 'product', label: 'Product', Icon: ProductIcon },
   { id: 'qr', label: 'QR Code', Icon: QrIcon },
+  { id: 'parking', label: 'Parking', Icon: ParkingIcon },
 ]
 
 function ModeSelect({ onSelect, onBack, onSettings }) {
@@ -989,7 +992,8 @@ export default function App() {
   const selectMethod = (method) => { setInputMethod(method); setGeneratedImage(null); if (method !== 'camera+voice') setReferenceImage(null); go(method === 'camera+voice' ? 'camera-capture' : 'capture') }
   const renderScreen = () => {
     switch (screen) {
-      case 'mode-select': return <ModeSelect onSelect={(value) => { setMode(value); go('input-method') }} onBack={() => go('home')} onSettings={() => go('settings')} />
+      case 'mode-select': return <ModeSelect onSelect={(value) => { if (value === 'parking') { go('parking') } else { setMode(value); go('input-method') } }} onBack={() => go('home')} onSettings={() => go('settings')} />
+      case 'parking': return <RoboticsPanel onBack={() => go('mode-select')} />
       case 'input-method': return <InputMethod mode={mode} onSelect={selectMethod} onBack={() => go('mode-select')} />
       case 'camera-capture': return <CameraCapture source={deviceSource} onSourceChange={setDeviceSource} onCaptured={(image) => { setReferenceImage(image); go('capture') }} onBack={() => go('input-method')} />
       case 'capture': return <Capture mode={mode} inputMethod={inputMethod} source={deviceSource} onSourceChange={setDeviceSource} onCapture={(text) => { setVoiceTranscript(text || ''); go('voice-result') }} onBack={() => go('input-method')} />

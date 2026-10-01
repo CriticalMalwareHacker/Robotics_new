@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -26,6 +27,9 @@ class CameraManager:
         self._worker_thread: threading.Thread | None = None
 
     def _get_device_index(self) -> int:
+        forced = os.getenv("CAMERA_INDEX", "").strip()  # multi-cam hosts
+        if forced.isdigit():
+            return int(forced)
         for idx in [0, 1, 2]:
             if Path(f"/dev/video{idx}").exists():
                 return idx

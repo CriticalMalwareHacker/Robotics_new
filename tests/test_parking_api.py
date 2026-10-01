@@ -12,11 +12,23 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.main import app  # noqa: E402
+from backend.services.parking.analyzer import load_slots  # noqa: E402
 
 client = TestClient(app)
 
-LEGAL = {"vehicle_id": "C1", "polygon": [[7, 7], [25, 7], [25, 15], [7, 15]],
-         "angle_deg": 0.0, "confidence": 0.92}
+
+def _inside_a1() -> dict:
+    """Build a guaranteed-legal detection from the real calibrated A1."""
+    a1 = next(s for s in load_slots() if s.slot_id == "A1")
+    cx = sum(p[0] for p in a1.polygon) / len(a1.polygon)
+    cy = sum(p[1] for p in a1.polygon) / len(a1.polygon)
+    return {"vehicle_id": "C1",
+            "polygon": [[cx - 4, cy - 3], [cx + 4, cy - 3],
+                        [cx + 4, cy + 3], [cx - 4, cy + 3]],
+            "angle_deg": 90.0, "confidence": 0.92}
+
+
+LEGAL = _inside_a1()
 BAD = {"vehicle_id": "C1", "polygon": [[70, 50], [85, 50], [85, 60], [70, 60]],
        "angle_deg": 0.0, "confidence": 0.92}
 
@@ -49,7 +61,7 @@ def test_status_shape(monkeypatch):
     resp = client.get("/api/parking/status")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["monitor"] == "stopped" and body["slots_loaded"] == 5
+    assert body["monitor"] == "stopped" and body["slots_loaded"] == 3
     assert "last_analysis" in body
 
 

@@ -34,3 +34,10 @@ export const parkingStatus = () => request('/api/parking/status')
 
 /** Live annotated-frame URL for <img> (Phase 5 wires the annotator). */
 export const parkingFrameUrl = (t = Date.now()) => `${API_URL}/api/parking/frame?t=${t}`
+
+/** Monitor loop control (1 Hz detect -> analyze -> debounce on the Pi). */
+export const monitorStart = () =>
+  request('/api/parking/monitor/start', { method: 'POST' })
+
+export const monitorStop = () =>
+  request('/api/parking/monitor/stop', { method: 'POST' })
