@@ -6,7 +6,6 @@
 # on the Pi
 cd ~/AI-Robotics_PrintSensei
 python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
-./venv/bin/pip install pyserial  # motors later; harmless now
 cp .env.example .env  # then edit: set API_KEY=<random token> (see docs/REMOTE_ARCHITECTURE.md)
 
 # serial + printer groups (re-login after)
@@ -57,3 +56,8 @@ output `dist/`). Open from your phone (mobile data works with the tunnel URL).
 
 The Hikvision is picked as the first `/dev/video*` device. If several cameras
 are attached, set `CAMERA_INDEX=<n>` in the Pi's `.env` and restart the service.
+
+For Uno manual-drive setup, upload the serial sketch and configure
+`ROBOT_SERIAL_PORT`/`ROBOT_MODE` as described in
+[`ARDUINO_SERIAL.md`](ARDUINO_SERIAL.md). Keep `ROBOT_MODE=mock` until the
+serial sketch is installed and the Uno is connected.

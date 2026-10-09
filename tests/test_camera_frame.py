@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.main import app  # noqa: E402
+from app.services.camera import CameraManager  # noqa: E402
 
 
 def _fake_jpeg_bytes(width: int = 320, height: int = 240) -> bytes:
@@ -58,3 +59,38 @@ def test_probe_mock_frame_generates_synthetic_jpeg(tmp_path):
     assert out.exists() and out.stat().st_size > 1000
     raw = out.read_bytes()
     assert raw[:2] == b"\xff\xd8"
+
+
+def test_windows_camera_selection_chooses_brightest_and_caches(monkeypatch):
+    class FakeCapture:
+        def __init__(self, index):
+            self.index = index
+            self.released = False
+
+        def isOpened(self):
+            return self.index in (0, 1)
+
+        def read(self):
+            if self.index == 0:
+                return True, np.zeros((8, 8, 3), dtype=np.uint8)
+            return True, np.full((8, 8, 3), 180, dtype=np.uint8)
+
+        def release(self):
+            self.released = True
+
+    opened = []
+
+    def fake_video_capture(index):
+        cap = FakeCapture(index)
+        opened.append(cap)
+        return cap
+
+    monkeypatch.delenv("CAMERA_INDEX", raising=False)
+    monkeypatch.setattr("platform.system", lambda: "Windows")
+    monkeypatch.setattr(cv2, "VideoCapture", fake_video_capture)
+
+    manager = CameraManager()
+    assert manager._get_device_index() == 1
+    assert manager._get_device_index() == 1
+    assert len(opened) == 3  # probe each candidate once; second call is cached
+    assert all(cap.released for cap in opened)

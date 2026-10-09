@@ -26,6 +26,23 @@ def test_hud_state_shape(monkeypatch):
     assert body["events"] == []
 
 
+def test_hud_slot_boxes_scale_inside_native_camera_frame(monkeypatch):
+    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.setattr(
+        "app.services.camera.camera_manager.get_frame_meta",
+        lambda: {"id": 1, "width": 640, "height": 480,
+                 "available": True, "brightness": 180.0},
+    )
+    body = client.get("/api/hud/state").json()
+    assert body["frame"]["width"] == 640
+    assert body["frame"]["height"] == 480
+    assert body["parking"]["slots"]
+    for slot in body["parking"]["slots"]:
+        for x, y in slot["polygon_px"]:
+            assert 0 <= x <= 640
+            assert 0 <= y <= 480
+
+
 def test_robot_command_validation_and_estop_flow(monkeypatch):
     monkeypatch.delenv("API_KEY", raising=False)
     monkeypatch.setenv("ROBOT_MODE", "mock")

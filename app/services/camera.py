@@ -19,6 +19,8 @@ class CameraManager:
 
     def __init__(self):
         self._lock = threading.Lock()
+        self._device_index_lock = threading.Lock()
+        self._resolved_device_index: int | None = None
         self._cap: cv2.VideoCapture | None = None
         self._latest_jpeg: bytes | None = None
         self._latest_frame_bgr: any = None
@@ -33,22 +35,86 @@ class CameraManager:
         forced = os.getenv("CAMERA_INDEX", "").strip()  # multi-cam hosts
         if forced.isdigit():
             return int(forced)
-        for idx in [0, 1, 2]:
-            if Path(f"/dev/video{idx}").exists():
-                return idx
-        return 0
+        import platform
+
+        if platform.system() == "Linux":
+            for idx in [0, 1, 2]:
+                if Path(f"/dev/video{idx}").exists():
+                    return idx
+            return 0
+
+        # Windows often has a black virtual camera at index 0 and the useful
+        # USB camera at index 1. Cache the brightest working candidate so HUD
+        # polling does not repeatedly open/close camera devices.
+        with self._device_index_lock:
+            if self._resolved_device_index is not None:
+                return self._resolved_device_index
+            best_index = None
+            best_brightness = 0.5
+            first_open_index = None
+            for idx in range(3):
+                cap = cv2.VideoCapture(idx)
+                try:
+                    if not cap.isOpened():
+                        continue
+                    if first_open_index is None:
+                        first_open_index = idx
+                    brightness = 0.0
+                    for _ in range(8):
+                        ok, frame = cap.read()
+                        if ok and frame is not None:
+                            brightness = max(brightness, float(frame.mean()))
+                            if brightness >= 0.5:
+                                break
+                    if brightness > best_brightness:
+                        best_index, best_brightness = idx, brightness
+                finally:
+                    cap.release()
+            # Prefer an image-producing camera, otherwise keep the first
+            # openable device so the usual offline/retry behavior still works.
+            self._resolved_device_index = (best_index if best_index is not None
+                                           else first_open_index if first_open_index is not None
+                                           else 0)
+            return self._resolved_device_index
 
     def _open_capture(self, dev_idx: int):
-        """Open the device and discard warm-up frames (DSHOW starts black)."""
-        cap = cv2.VideoCapture(dev_idx, cv2.CAP_V4L2)
-        if not cap.isOpened():
+        """Open the device and discard warm-up frames (DSHOW starts black).
+
+        Cross-platform: CAP_V4L2 is Linux-only (fails on Windows and adds
+        seconds of delay), so only try it on Linux. The 1280x720 force-up
+        turns some laptop/USB cameras black (mean 0.0); if the requested
+        mode reads black, fall back to the camera's native mode.
+        """
+        import platform
+
+        if platform.system() == "Linux":
+            cap = cv2.VideoCapture(dev_idx, cv2.CAP_V4L2)
+            if not cap.isOpened():
+                cap = cv2.VideoCapture(dev_idx)
+        else:
             cap = cv2.VideoCapture(dev_idx)
-        if cap.isOpened():
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-            cap.set(cv2.CAP_PROP_FPS, 30)
-            for _ in range(10):
-                cap.read()
+        if not cap.isOpened():
+            return cap
+        # Try HD first, verify it actually delivers light.
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap.set(cv2.CAP_PROP_FPS, 30)
+        probe = None
+        for _ in range(10):
+            ok, probe = cap.read()
+            if ok and probe is not None and float(probe.mean()) >= 0.5:
+                break
+        if probe is None or float(probe.mean()) < 0.5:
+            # HD mode is black on this device: reopen at native resolution.
+            logger.warning("Camera %s reads black at 1280x720, falling back to native mode.", dev_idx)
+            try:
+                cap.release()
+            except Exception:
+                pass
+            cap = cv2.VideoCapture(dev_idx)
+            if cap.isOpened():
+                for _ in range(10):
+                    cap.read()
         return cap
 
     def _worker(self):
@@ -131,12 +197,13 @@ class CameraManager:
 
     def get_latest_jpeg(self) -> bytes | None:
         self.ensure_started()
-        # Wait up to 1.5s for the first frame if just started
-        for _ in range(15):
+        # Wait up to ~5s for the first frame if just started (Windows
+        # DSHOW + resolution fallback needs 2-4s on cold open).
+        for _ in range(50):
             with self._lock:
                 if self._latest_jpeg is not None:
                     return self._latest_jpeg
-            time.sleep(0.08)
+            time.sleep(0.1)
         return self._latest_jpeg
 
     def capture_photo(self) -> tuple[bool, str, str]:

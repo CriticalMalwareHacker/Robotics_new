@@ -26,6 +26,7 @@ Pillow>=10.0.0
 # Hardware drivers and camera
 pyusb>=1.2.1
 opencv-python-headless>=4.8.0
+pyserial>=3.5
 
 # Test suite
 pytest>=8.0.0

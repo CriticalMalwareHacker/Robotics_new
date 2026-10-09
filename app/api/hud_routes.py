@@ -27,11 +27,15 @@ from .robot_routes import _link as _robot_link, _state as _robot_state
 router = APIRouter(dependencies=[Depends(require_api_key)])
 
 
-def _cm_to_px(poly_cm: list[list[float]], h_inv: np.ndarray) -> list[list[int]]:
+def _cm_to_px(poly_cm: list[list[float]], h_inv: np.ndarray,
+              scale: tuple[float, float] = (1.0, 1.0)) -> list[list[int]]:
+    """Table cm -> overlay px. `scale` is (frame/calib) per axis so boxes
+    drawn from a 1280x720 calibration land correctly on e.g. 640x480 frames."""
     arr = np.asarray(poly_cm, dtype=np.float32).reshape(-1, 1, 2)
     import cv2
     px = cv2.perspectiveTransform(arr, h_inv).reshape(-1, 2)
-    return [[int(round(float(x))), int(round(float(y)))] for x, y in px]
+    sx, sy = scale
+    return [[int(round(float(x) * sx)), int(round(float(y) * sy))] for x, y in px]
 
 
 def _devices() -> dict:
@@ -82,9 +86,12 @@ def hud_state():
         cfg = json.loads((Path(monitor.__file__).parent / "config" / "slots.json")
                          .read_text(encoding="utf-8"))
         h_inv = np.linalg.inv(np.asarray(cfg["homography_px_to_cm"]))
+        cw, ch = cfg.get("image_size", [1280, 720])
+        fw, fh = meta.get("width") or cw, meta.get("height") or ch
+        scale = (fw / cw, fh / ch)
         for s in load_slots():
             slots.append({"name": s.slot_id,
-                          "polygon_px": _cm_to_px(s.polygon, h_inv),
+                          "polygon_px": _cm_to_px(s.polygon, h_inv, scale),
                           "restricted": s.restricted})
         dets = m.get("last_detections", []) if isinstance(m, dict) else []
         by_id = {r.vehicle_id: r for r in (analysis.results if analysis else [])}
@@ -96,7 +103,7 @@ def hud_state():
                 "valid": (r.violation == ViolationType.LEGAL) if r else None,
                 "violation": r.violation.value if r else None,
                 "confidence": d.confidence,
-                "polygon_px": _cm_to_px(d.polygon, h_inv),
+                "polygon_px": _cm_to_px(d.polygon, h_inv, scale),
                 "plate": None,  # plate reader lands in Phase 6
                 "plate_conf": None,
             })

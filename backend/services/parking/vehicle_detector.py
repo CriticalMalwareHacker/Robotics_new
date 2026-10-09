@@ -46,11 +46,16 @@ class ClassicalDetector:
     def __init__(self, homography: np.ndarray,
                  roi_px: list[list[float]] | None = None,
                  min_area_px: int = MIN_AREA_PX,
-                 max_area_px: int = MAX_AREA_PX) -> None:
+                 max_area_px: int = MAX_AREA_PX,
+                 calib_size: tuple[int, int] = (1280, 720)) -> None:
         self.h = np.asarray(homography, dtype=np.float64)
         self.roi_px = roi_px
         self.min_area_px = min_area_px
         self.max_area_px = max_area_px
+        # Resolution the homography was calibrated at (slots.json image_size).
+        # Frames at other resolutions (e.g. 640x480 native fallback) are
+        # scaled per-frame in detect(); identical sizes are a no-op.
+        self.calib_size = (int(calib_size[0]), int(calib_size[1]))
 
     def _mask(self, frame_bgr: np.ndarray) -> np.ndarray:
         hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
@@ -66,22 +71,42 @@ class ClassicalDetector:
     def detect(self, frame_bgr: np.ndarray) -> list[Detection]:
         if frame_bgr is None:
             return []
+        # Scale calibration to the actual frame: px_calib = S @ px_frame,
+        # so H_frame = H_calib @ S with S = diag(calib/frame). Areas scale by
+        # pixel count ratio, lengths by its square root. Equal sizes: identity.
+        fh, fw = frame_bgr.shape[:2]
+        cw, ch = self.calib_size
+        h, roi = self.h, self.roi_px
+        min_area, max_area, min_side = (self.min_area_px, self.max_area_px,
+                                        MIN_LONG_SIDE_PX)
+        if (fw, fh) != (cw, ch):
+            import math
+            sx, sy = cw / fw, ch / fh
+            h = self.h @ np.array([[sx, 0.0, 0.0],
+                                   [0.0, sy, 0.0],
+                                   [0.0, 0.0, 1.0]])
+            if roi is not None:
+                roi = [[float(x) * fw / cw, float(y) * fh / ch]
+                       for x, y in roi]
+            factor = (fw * fh) / (cw * ch)
+            min_area, max_area = self.min_area_px * factor, self.max_area_px * factor
+            min_side = MIN_LONG_SIDE_PX * math.sqrt(factor)
         mask = self._mask(frame_bgr)
-        if self.roi_px is not None:  # kill off-mat desk/shadow blobs
-            roi = np.zeros(mask.shape, dtype=np.uint8)
-            cv2.fillPoly(roi, [np.asarray(self.roi_px, dtype=np.float32)
-                               .astype(int)], 255)
-            mask = cv2.bitwise_and(mask, roi)
+        if roi is not None:  # kill off-mat desk/shadow blobs
+            roi_mask = np.zeros(mask.shape, dtype=np.uint8)
+            cv2.fillPoly(roi_mask, [np.asarray(roi, dtype=np.float32)
+                                    .astype(int)], 255)
+            mask = cv2.bitwise_and(mask, roi_mask)
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
                                        cv2.CHAIN_APPROX_SIMPLE)
         found: list[tuple[float, np.ndarray, float]] = []
         for cnt in contours:
             area = float(cv2.contourArea(cnt))
-            if not self.min_area_px <= area <= self.max_area_px:
+            if not min_area <= area <= max_area:
                 continue
             rect = cv2.minAreaRect(cnt)
-            (w, h) = rect[1]
-            if max(w, h) < MIN_LONG_SIDE_PX:
+            (w, h_) = rect[1]
+            if max(w, h_) < min_side:
                 continue
             box = cv2.boxPoints(rect).astype(np.float32)  # 4x2 px
             cx = float(box[:, 0].mean())
@@ -91,7 +116,7 @@ class ClassicalDetector:
         out: list[Detection] = []
         for i, (_, box, ang) in enumerate(found, start=1):
             pts = box.reshape(-1, 1, 2)
-            cm = cv2.perspectiveTransform(pts, self.h).reshape(-1, 2)
+            cm = cv2.perspectiveTransform(pts, h).reshape(-1, 2)
             out.append(Detection(
                 vehicle_id=f"CAR-{i:02d}",
                 polygon=[[round(float(x), 2), round(float(y), 2)]

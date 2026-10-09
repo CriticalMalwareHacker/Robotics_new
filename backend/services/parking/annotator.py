@@ -19,21 +19,31 @@ WHITE = (255, 255, 255)
 THICK = 2
 
 
-def _to_px(poly_cm: list[list[float]], h_inv: np.ndarray) -> np.ndarray:
+def _to_px(poly_cm: list[list[float]], h_inv: np.ndarray,
+           scale: tuple[float, float] = (1.0, 1.0)) -> np.ndarray:
+    """Map table cm -> image px. `scale` rescales calibration-space px to the
+    actual frame ((frame_w/calib_w), (frame_h/calib_h)); identity when equal."""
     arr = np.asarray(poly_cm, dtype=np.float32).reshape(-1, 1, 2)
-    return cv2.perspectiveTransform(arr, h_inv).reshape(-1, 2).astype(int)
+    pts = cv2.perspectiveTransform(arr, h_inv).reshape(-1, 2)
+    sx, sy = scale
+    if (sx, sy) != (1.0, 1.0):
+        pts = pts * np.asarray([sx, sy], dtype=np.float64)
+    return pts.astype(int)
 
 
 def annotate(frame_bgr: np.ndarray, detections: list[Detection],
              analysis: ParkingAnalysis, slots: list[Slot],
-             homography: np.ndarray) -> np.ndarray:
+             homography: np.ndarray,
+             calib_size: tuple[int, int] = (1280, 720)) -> np.ndarray:
     """Draw HUD overlay; returns a new BGR image (input untouched)."""
     img = frame_bgr.copy()
+    fh, fw = frame_bgr.shape[:2]
+    scale = (fw / calib_size[0], fh / calib_size[1])
     h_inv = np.linalg.inv(np.asarray(homography, dtype=np.float64))
     by_id = {r.vehicle_id: r for r in analysis.results}
 
     for slot in slots:
-        pts = _to_px(slot.polygon, h_inv)
+        pts = _to_px(slot.polygon, h_inv, scale)
         color = GREY
         if not slot.restricted:
             assigned = [r for r in analysis.results if r.slot_id == slot.slot_id]
@@ -49,7 +59,7 @@ def annotate(frame_bgr: np.ndarray, detections: list[Detection],
                     0.8, color, 2, cv2.LINE_AA)
 
     for det in detections:
-        px = _to_px(det.polygon, h_inv)
+        px = _to_px(det.polygon, h_inv, scale)
         res = by_id.get(det.vehicle_id)
         color = GREEN if res is None or res.violation == ViolationType.LEGAL else RED
         cv2.polylines(img, [px], True, color, 3)

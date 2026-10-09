@@ -38,10 +38,15 @@ export default function CameraFeed({ frame, parking, fetchedAt, backendOnline, c
 
   const delayed = Date.now() - fetchedAt > 1000
   const aspect = frame?.width && frame?.height ? `${frame.width} / ${frame.height}` : '16 / 9'
+  // Keep the box exactly image-shaped when maxHeight clamps it (otherwise
+  // w-full + clamped height widens the box and pillars black bars each side).
+  const maxWidth = frame?.width && frame?.height
+    ? `${62 * frame.width / frame.height}vh`
+    : undefined
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="relative mx-auto w-full overflow-hidden rounded-lg border border-border bg-black" style={{ aspectRatio: aspect, maxHeight: '62vh' }}>
+      <div className="relative mx-auto w-full overflow-hidden rounded-lg border border-border bg-black" style={{ aspectRatio: aspect, maxHeight: '62vh', ...(maxWidth ? { maxWidth } : {}) }}>
         {!backendOnline && <Skeleton className="absolute inset-0 h-full w-full rounded-none" />}
         {backendOnline && !cameraOnline && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center">

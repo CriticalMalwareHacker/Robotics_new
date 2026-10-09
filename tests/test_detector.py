@@ -4,7 +4,6 @@ Golden fixture: tests/data/mat_baseline.jpg (1280x720 Hikvision, top-down,
 3 paper cars on hand-drawn 3-bay mat). Ground truth: all 3 LEGAL.
 """
 
-import json
 import sys
 from pathlib import Path
 
@@ -17,19 +16,41 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.main import app  # noqa: E402
 from backend.services.parking import monitor  # noqa: E402
-from backend.services.parking.analyzer import analyze_frame, load_slots  # noqa: E402
-from backend.services.parking.models import Detection, ViolationType  # noqa: E402
+from backend.services.parking.analyzer import analyze_frame  # noqa: E402
+from backend.services.parking.models import Detection, Slot, ViolationType  # noqa: E402
 from backend.services.parking.vehicle_detector import ClassicalDetector  # noqa: E402
 
 DATA = Path(__file__).resolve().parent / "data" / "mat_baseline.jpg"
-CFG = json.loads((Path(monitor.__file__).parent / "config" / "slots.json")
-                 .read_text(encoding="utf-8"))
-H = np.asarray(CFG["homography_px_to_cm"], dtype=np.float64)
-ROI = CFG["corners_px_TL_TR_BR_BL"]
+
+# This image was captured with the original 1280x720 camera view. Keep its
+# calibration local to the fixture so updating the live camera calibration
+# does not silently change the golden detector test.
+BASELINE_H = np.asarray([
+    [0.05618514628402719, 0.006521490193681729, -10.51715707004134],
+    [-0.0029376735757340668, 0.08015652185217241, -7.902341918724642],
+    [-9.2409997729913e-05, 1.791246477534928e-05, 1.0],
+], dtype=np.float64)
+BASELINE_ROI = [[175.0, 105.0], [1130.0, 140.0],
+                [1085.0, 650.0], [110.0, 665.0]]
+
+
+def baseline_slots():
+    return [
+        Slot(slot_id="A1", polygon=[[0.0, 0.0], [16.2, 0.58],
+                                     [18.55, 44.59], [0.0, 45.0]],
+             angle_deg=90.0, restricted=False),
+        Slot(slot_id="A2", polygon=[[16.2, 0.58], [36.22, 0.44],
+                                     [38.83, 44.75], [18.55, 44.59]],
+             angle_deg=90.0, restricted=False),
+        Slot(slot_id="A3", polygon=[[36.22, 0.44], [60.0, 0.0],
+                                     [60.0, 45.0], [38.83, 44.75]],
+             angle_deg=90.0, restricted=False),
+    ]
 
 
 def detector():
-    return ClassicalDetector(H, roi_px=ROI)
+    return ClassicalDetector(BASELINE_H, roi_px=BASELINE_ROI,
+                             calib_size=(1280, 720))
 
 
 def test_real_frame_finds_three_legal_cars():
@@ -38,7 +59,7 @@ def test_real_frame_finds_three_legal_cars():
     dets = detector().detect(img)
     assert len(dets) == 3
     assert [d.vehicle_id for d in dets] == ["CAR-01", "CAR-02", "CAR-03"]
-    analysis = analyze_frame(dets, load_slots())
+    analysis = analyze_frame(dets, baseline_slots())
     assert analysis.parking_valid and analysis.violation is None
     by_slot = {r.slot_id: r for r in analysis.results}
     assert set(by_slot) == {"A1", "A2", "A3"}
@@ -59,7 +80,7 @@ def _shift(poly, dx, dy):
 def test_variant_results_table():
     """Brief gate: one frame, five placements -> correct decisions."""
     img = cv2.imread(str(DATA))
-    slots = load_slots()
+    slots = baseline_slots()
     base = {d.vehicle_id: d for d in detector().detect(img)}
 
     a1 = next(s for s in slots if s.slot_id == "A1")

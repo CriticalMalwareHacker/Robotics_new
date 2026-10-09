@@ -86,7 +86,8 @@ def frame():
     cfg = json.loads((Path(monitor.__file__).parent / "config" / "slots.json")
                      .read_text(encoding="utf-8"))
     annotated = annotate(frame_bgr, detections, analysis, slots,
-                         np.asarray(cfg["homography_px_to_cm"]))
+                         np.asarray(cfg["homography_px_to_cm"]),
+                         tuple(cfg.get("image_size", [1280, 720])))
     return Response(content=encode_jpeg(annotated), media_type="image/jpeg",
                     headers=dict(_NO_CACHE))
 

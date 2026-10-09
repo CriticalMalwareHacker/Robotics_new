@@ -53,11 +53,10 @@ def load_detector():
         from pathlib import Path
         cfg = json.loads((Path(__file__).parent / "config" / "slots.json")
                          .read_text(encoding="utf-8"))
-        cfg = json.loads((Path(__file__).parent / "config" / "slots.json")
-                         .read_text(encoding="utf-8"))
         h = np.asarray(cfg["homography_px_to_cm"], dtype=np.float64)
         roi = cfg.get("corners_px_TL_TR_BR_BL")
-        return ClassicalDetector(h, roi_px=roi), slots
+        calib = tuple(cfg.get("image_size", [1280, 720]))
+        return ClassicalDetector(h, roi_px=roi, calib_size=calib), slots
     except Exception as exc:
         logger.warning("monitor: calibration missing, detector null: %s", exc)
         return NullDetector(), []
