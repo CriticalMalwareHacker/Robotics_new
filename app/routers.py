@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from app.core.fake_request_generator import create_fake_print_request
 from app.models.label_data import LabelData
 from app.renderer import LabelRenderer
@@ -147,6 +147,10 @@ def cancel_usb_mic_record():
 
 @router.get("/", response_class=HTMLResponse)
 def home():
+    frontend_index = Path(__file__).resolve().parent.parent / "frontend" / "dist" / "index.html"
+    if frontend_index.is_file():
+        return FileResponse(frontend_index, media_type="text/html")
+
     return f"""
     <html>
         <head><title>{APP_NAME}</title></head>
