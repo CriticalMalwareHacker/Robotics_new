@@ -87,10 +87,7 @@ def command(cmd: DriveCommand):
 def estop():
     _state["estop"] = True
     _state["mode"] = "idle"
-    try:
-        monitor.stop()
-    except Exception:
-        pass
+    # Keep vision running for HUD feedback; E-stop halts motion, not sensing.
     if _real_mode():
         ok, reply = arduino_serial.request("ESTOP")
         if not ok:
@@ -132,7 +129,7 @@ def auto_start():
 @router.post("/api/robot/auto/stop")
 def auto_stop():
     _state["mode"] = "idle"
-    monitor.stop()
+    # Monitoring is independent from driving and stays available in idle mode.
     if _real_mode() and arduino_serial.connected():
         arduino_serial.request("STOP")
     events.log("info", "Auto mode stopped. Robot is idle.")

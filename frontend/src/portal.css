@@ -1,0 +1,92 @@
+.portal-shell {
+  --background: 210 20% 98%;
+  --foreground: 222 30% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 30% 12%;
+  --border: 220 15% 88%;
+  --primary: 221 83% 53%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 16% 94%;
+  --secondary-foreground: 222 25% 18%;
+  --muted: 220 16% 94%;
+  --muted-foreground: 220 9% 46%;
+  --accent: 220 16% 94%;
+  --accent-foreground: 222 25% 18%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --radius: 0.75rem;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100dvh;
+  overflow: auto;
+  background: #f7f8fa;
+  color: #17202e;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.portal-shell a { color: inherit; text-decoration: none; }
+.portal-header { height: 72px; max-width: 1120px; margin: 0 auto; padding: 0 28px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e8ebf0; }
+.portal-brand { display: inline-flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 650; letter-spacing: -.02em; }
+.portal-brand-icon { width: 30px; height: 30px; display: grid; place-items: center; color: #fff; border-radius: 9px; background: #2563eb; }
+.portal-brand-icon svg { width: 18px; height: 18px; }
+.portal-header-note, .portal-back-link { color: #707b8c; font-size: 13px; }
+.portal-back-link { display: inline-flex; align-items: center; gap: 7px; }
+.portal-back-link svg { width: 16px; height: 16px; }
+.portal-home { width: min(100% - 40px, 620px); margin: 0 auto; padding: clamp(74px, 15vh, 150px) 0 80px; }
+.portal-eyebrow { margin: 0 0 12px; color: #728096; font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+.portal-home h1, .history-heading h1 { margin: 0; color: #17202e; font-size: clamp(32px, 5vw, 42px); line-height: 1.12; letter-spacing: -.045em; font-weight: 650; }
+.portal-subtitle { margin: 10px 0 0; color: #6e798a; font-size: 15px; line-height: 1.6; }
+.portal-options { display: grid; gap: 12px; margin-top: 34px; }
+.portal-option-link { display: block; }
+.portal-option { min-height: 96px; padding: 18px 20px; display: flex; align-items: center; gap: 16px; border-color: #e5e8ed; border-radius: 14px; box-shadow: 0 2px 8px rgb(19 31 50 / 3%); transition: border-color .16s, box-shadow .16s, transform .16s; }
+.portal-option-link:hover .portal-option { border-color: #b8c9ee; box-shadow: 0 8px 24px rgb(19 31 50 / 8%); transform: translateY(-1px); }
+.portal-option-icon { width: 42px; height: 42px; flex: none; display: grid; place-items: center; color: #2563eb; border-radius: 12px; background: #edf3ff; }
+.portal-option-icon svg { width: 21px; height: 21px; }
+.portal-option-copy { flex: 1; display: grid; gap: 5px; }
+.portal-option-copy strong { color: #192435; font-size: 15px; font-weight: 600; }
+.portal-option-copy small { color: #778294; font-size: 13px; line-height: 1.45; }
+.portal-option-arrow { width: 18px; height: 18px; color: #9aa4b2; }
+.portal-footnote { display: flex; align-items: center; gap: 8px; margin: 27px 0 0; color: #8993a2; font-size: 12px; }
+.portal-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #22a06b; }
+.history-page { width: min(100% - 40px, 860px); margin: 0 auto; padding: 64px 0 80px; }
+.history-heading { margin-bottom: 26px; display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+.history-heading h1 { font-size: clamp(28px, 4vw, 36px); }
+.portal-refresh { gap: 8px; color: #455267 !important; background: white !important; }
+.portal-refresh svg { width: 15px; height: 15px; }
+.ticket-list-card { overflow: hidden; border-color: #e5e8ed; border-radius: 14px; background: white; box-shadow: 0 2px 8px rgb(19 31 50 / 3%); }
+.history-empty { min-height: 250px; padding: 32px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #788395; text-align: center; font-size: 14px; }
+.history-empty strong { color: #293448; font-size: 15px; }
+.history-empty p { max-width: 390px; margin: 0; line-height: 1.55; }
+.history-empty .hud-btn { margin-top: 8px; color: #38465c; }
+.empty-ticket-icon { width: 44px; height: 44px; margin-bottom: 3px; display: grid; place-items: center; color: #6f7d90; border-radius: 14px; background: #f1f3f6; }
+.empty-ticket-icon svg { width: 21px; height: 21px; }
+.ticket-row { min-height: 92px; padding: 17px 20px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid #edf0f4; }
+.ticket-row:last-child { border-bottom: 0; }
+.ticket-row-icon { width: 38px; height: 38px; flex: none; display: grid; place-items: center; color: #4f6fba; border-radius: 11px; background: #f0f4fc; }
+.ticket-row-icon svg { width: 18px; height: 18px; }
+.ticket-row-main { min-width: 0; flex: 1; }
+.ticket-row-title { display: flex; align-items: center; gap: 10px; }
+.ticket-row-title strong { color: #202b3d; font-size: 14px; font-weight: 600; }
+.ticket-status { padding: 3px 8px; color: #536174; border-radius: 99px; background: #f0f2f5; font-size: 10px; font-weight: 600; text-transform: capitalize; }
+.ticket-status.status-printed { color: #13774c; background: #e9f7ef; }
+.ticket-status.status-failed { color: #b42318; background: #fff0ee; }
+.ticket-row-main p { margin: 5px 0; overflow: hidden; color: #697588; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.ticket-row-main small { display: inline-flex; align-items: center; gap: 5px; color: #9099a7; font-size: 11px; }
+.ticket-row-main small svg { width: 12px; height: 12px; }
+.ticket-image-link { flex: none; display: inline-flex; align-items: center; gap: 4px; color: #3869c5 !important; font-size: 12px; font-weight: 550; }
+.ticket-image-link svg { width: 14px; height: 14px; }
+
+@media (max-width: 560px) {
+  .portal-header { height: 62px; padding: 0 18px; }
+  .portal-header-note { display: none; }
+  .portal-home { width: calc(100% - 36px); padding-top: 82px; }
+  .history-page { width: calc(100% - 28px); padding-top: 38px; }
+  .history-heading { align-items: flex-start; }
+  .history-heading .portal-refresh { width: 40px; overflow: hidden; padding: 0; font-size: 0; }
+  .history-heading .portal-refresh svg { flex: none; }
+  .ticket-row { padding: 14px; gap: 10px; }
+  .ticket-image-link { width: 24px; overflow: hidden; font-size: 0; }
+  .ticket-image-link svg { flex: none; }
+}

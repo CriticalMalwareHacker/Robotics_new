@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import threading
 from datetime import datetime
+import json
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -20,13 +21,47 @@ MARGIN = 12
 
 _lock = threading.Lock()
 _seq = 0
-LAST: dict = {"ticket": None}  # {"number","status","image_url","time",...}
+_history_path = Path("app/database/parking_tickets.json")
+
+
+def get_history() -> list[dict]:
+    """Return saved parking tickets, newest first."""
+    try:
+        data = json.loads(_history_path.read_text(encoding="utf-8"))
+        return list(reversed(data)) if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def record_ticket(ticket: dict) -> dict:
+    """Persist a ticket record so history survives backend restarts."""
+    with _lock:
+        try:
+            existing = json.loads(_history_path.read_text(encoding="utf-8"))
+            if not isinstance(existing, list):
+                existing = []
+        except (OSError, json.JSONDecodeError):
+            existing = []
+        existing.append(ticket)
+        _history_path.parent.mkdir(parents=True, exist_ok=True)
+        _history_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+        LAST["ticket"] = ticket
+    return ticket
+
+
+LAST: dict = {"ticket": (get_history()[0] if get_history() else None)}
 
 
 def next_number() -> str:
     global _seq
     with _lock:
-        _seq += 1
+        today = datetime.now().strftime("%y%m%d")
+        persisted = get_history()
+        matching = [str(row.get("number", "")) for row in persisted
+                    if str(row.get("number", "")).startswith(f"T-{today}-")]
+        highest = max((int(number.rsplit("-", 1)[-1]) for number in matching
+                       if number.rsplit("-", 1)[-1].isdigit()), default=0)
+        _seq = max(_seq, highest) + 1
         return f"T-{datetime.now().strftime('%y%m%d')}-{_seq:03d}"
 
 

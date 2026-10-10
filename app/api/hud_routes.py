@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends
 from backend.services.parking import events, monitor
 from backend.services.parking.analyzer import load_slots
 from backend.services.parking.models import ParkingAnalysis, ViolationType
-from backend.services.parking.ticket import LAST
+from backend.services.parking.ticket import LAST, get_history, record_ticket
 
 from .deps import require_api_key
 from .robot_routes import _link as _robot_link, _state as _robot_state
@@ -138,7 +138,6 @@ def ticket_test_print():
 
     from app.services.printer import print_label
     from backend.services.parking.ticket import (
-        LAST as _LAST_TICKET,
         build_ticket_image,
         next_number,
         save_ticket_png,
@@ -152,9 +151,17 @@ def ticket_test_print():
     ok, message = print_label(image)
     record = {"number": number, "status": "printed" if ok else "failed",
               "message": message, "image_url": image_url,
+              "plate": "MH01AB1234", "vehicle": "TEST-001", "slot": "A3",
+              "violation": "OUTSIDE_SLOT",
               "time": datetime.now().isoformat(timespec="seconds")}
-    _LAST_TICKET["ticket"] = record
+    record_ticket(record)
     events.log("info" if ok else "error",
                "Test ticket printed." if ok
                else "Printer not available. The ticket was saved and can be reprinted.")
     return {"result": "ok" if ok else "saved", **record}
+
+
+@router.get("/api/ticket/history")
+def ticket_history():
+    """Return saved parking tickets, newest first."""
+    return get_history()

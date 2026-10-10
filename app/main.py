@@ -32,6 +32,13 @@ app.mount("/generated-images", StaticFiles(directory="diagram_images"), name="ge
 app.mount("/generated_labels", StaticFiles(directory="generated_labels"), name="generated_labels")
 app.mount("/generated-labels", StaticFiles(directory="generated_labels"), name="generated-labels")
 
+# When a production Vite build is present, serve it from the same origin as the
+# API. This lets the Pi host the complete UI locally for offline demos. Keep
+# this catch-all mount last so the API and generated-file routes take priority.
+frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if (frontend_dist / "index.html").is_file():
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+
 
 
 @app.on_event("startup")

@@ -78,43 +78,43 @@ class CameraManager:
             return self._resolved_device_index
 
     def _open_capture(self, dev_idx: int):
-        """Open the device and discard warm-up frames (DSHOW starts black).
+        """Open the native/default camera driver and warm it up.
 
-        Cross-platform: CAP_V4L2 is Linux-only (fails on Windows and adds
-        seconds of delay), so only try it on Linux. The 1280x720 force-up
-        turns some laptop/USB cameras black (mean 0.0); if the requested
-        mode reads black, fall back to the camera's native mode.
+        CAP_V4L2 is Linux-only. On Windows, use OpenCV's default backend;
+        these USB cameras can take several seconds to return a live image.
+        If the forced HD mode stays black, reopen at the camera's native size.
         """
         import platform
 
         if platform.system() == "Linux":
             cap = cv2.VideoCapture(dev_idx, cv2.CAP_V4L2)
             if not cap.isOpened():
+                cap.release()
                 cap = cv2.VideoCapture(dev_idx)
         else:
             cap = cv2.VideoCapture(dev_idx)
         if not cap.isOpened():
             return cap
-        # Try HD first, verify it actually delivers light.
+
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         cap.set(cv2.CAP_PROP_FPS, 30)
         probe = None
-        for _ in range(10):
+        for _ in range(40):
             ok, probe = cap.read()
             if ok and probe is not None and float(probe.mean()) >= 0.5:
-                break
-        if probe is None or float(probe.mean()) < 0.5:
-            # HD mode is black on this device: reopen at native resolution.
-            logger.warning("Camera %s reads black at 1280x720, falling back to native mode.", dev_idx)
-            try:
-                cap.release()
-            except Exception:
-                pass
-            cap = cv2.VideoCapture(dev_idx)
-            if cap.isOpened():
-                for _ in range(10):
-                    cap.read()
+                return cap
+            time.sleep(0.03)
+
+        logger.warning("Camera %s reads black at 1280x720, falling back to native mode.", dev_idx)
+        cap.release()
+        cap = cv2.VideoCapture(dev_idx)
+        if cap.isOpened():
+            for _ in range(40):
+                ok, probe = cap.read()
+                if ok and probe is not None and float(probe.mean()) >= 0.5:
+                    return cap
+                time.sleep(0.03)
         return cap
 
     def _worker(self):
@@ -197,9 +197,8 @@ class CameraManager:
 
     def get_latest_jpeg(self) -> bytes | None:
         self.ensure_started()
-        # Wait up to ~5s for the first frame if just started (Windows
-        # DSHOW + resolution fallback needs 2-4s on cold open).
-        for _ in range(50):
+        # Camera open and warm-up can take several seconds on Windows USB cams.
+        for _ in range(100):
             with self._lock:
                 if self._latest_jpeg is not None:
                     return self._latest_jpeg
@@ -235,18 +234,20 @@ camera_manager = CameraManager()
 
 def get_camera_status() -> dict[str, str | bool | int | float]:
     idx = camera_manager._get_device_index()
-    exists = Path(f"/dev/video{idx}").exists()
+    import platform
+
+    exists = platform.system() == "Linux" and Path(f"/dev/video{idx}").exists()
     with camera_manager._lock:
         flowing = camera_manager._latest_jpeg is not None
         brightness = camera_manager._last_brightness
-    # /dev/video* only exists on Linux; on Windows/macOS the proof is frames.
-    available = exists or flowing
+    # A device node alone is not enough; camera readiness requires live frames.
+    available = flowing
     if flowing:
         name = f"USB camera (index {idx})"
     elif exists:
-        name = "Hikvision 1080P USB Camera"
+        name = f"Camera index {idx} (no frames)"
     else:
-        name = "None"
+        name = f"Camera index {idx} (not detected)"
     return {
         "available": available,
         "name": name,

@@ -3,7 +3,7 @@ export default {
   darkMode: 'class',
   // Only HUD + shadcn files are scanned, and preflight is off, so the
   // existing LCD pages keep their styling untouched.
-  content: ['./index.html', './src/hud/**/*.{js,jsx}', './src/components/ui/**/*.{js,jsx}'],
+  content: ['./index.html', './src/App.jsx', './src/hud/**/*.{js,jsx}', './src/components/ui/**/*.{js,jsx}'],
   corePlugins: { preflight: false },
   theme: {
     extend: {
