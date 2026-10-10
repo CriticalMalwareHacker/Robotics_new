@@ -10,9 +10,9 @@ function headers(extra = {}) {
     : { ...extra }
 }
 
-async function request(path, options = {}) {
+async function request(path, options = {}, timeoutMs = 8000) {
   const ctrl = new AbortController()
-  const timer = window.setTimeout(() => ctrl.abort(), 8000)
+  const timer = window.setTimeout(() => ctrl.abort(), timeoutMs)
   try {
     const res = await fetch(`${API_URL}${path}`, {
       ...options,
@@ -41,9 +41,12 @@ export const drive = (command, speed, durationMs) =>
     method: 'POST',
     body: JSON.stringify({ command, speed, duration_ms: durationMs }),
   })
-export const testPrint = () => request('/api/ticket/test-print', { method: 'POST' })
+// Bluetooth connect can take up to 10s on the backend; allow the print job to
+// finish before the browser gives up. An aborted browser request does not stop
+// a ticket that the backend has already started printing.
+export const testPrint = () => request('/api/ticket/test-print', { method: 'POST' }, 30000)
 export const printViolation = (vehicleId, plate) => request('/api/ticket/violation', {
   method: 'POST',
   body: JSON.stringify({ vehicle_id: vehicleId, plate }),
-})
+}, 30000)
 export const getTicketHistory = () => request('/api/ticket/history')
