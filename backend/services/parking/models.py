@@ -24,6 +24,7 @@ class Detection(BaseModel):
     angle_deg: float = Field(ge=-360.0, le=360.0)
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     plate_hint: str | None = Field(default=None, max_length=16)
+    plate_conf: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class Slot(BaseModel):

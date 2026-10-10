@@ -63,12 +63,15 @@ void beginMove(char direction, int speed, unsigned long durationMs) {
       motor2.run(BACKWARD);
       break;
     case 'L':
-      motor1.run(BACKWARD);
+      // Motor 1 is the left wheel: hold it and drive the right wheel forward.
+      // This avoids counter-rotating both motors against the robot's weight.
+      motor1.run(RELEASE);
       motor2.run(FORWARD);
       break;
     case 'R':
+      // Motor 2 is the right wheel: hold it and drive the left wheel forward.
       motor1.run(FORWARD);
-      motor2.run(BACKWARD);
+      motor2.run(RELEASE);
       break;
     default:
       stopMotors();

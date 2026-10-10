@@ -99,7 +99,7 @@ class ClassicalDetector:
             mask = cv2.bitwise_and(mask, roi_mask)
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
                                        cv2.CHAIN_APPROX_SIMPLE)
-        found: list[tuple[float, np.ndarray, float]] = []
+        found: list[tuple[float, np.ndarray]] = []
         for cnt in contours:
             area = float(cv2.contourArea(cnt))
             if not min_area <= area <= max_area:
@@ -108,19 +108,22 @@ class ClassicalDetector:
             (w, h_) = rect[1]
             if max(w, h_) < min_side:
                 continue
-            box = cv2.boxPoints(rect).astype(np.float32)  # 4x2 px
-            cx = float(box[:, 0].mean())
-            ang = _long_edge_angle_deg(box)
-            found.append((cx, box, ang))
+            cx = float(cnt[:, 0, 0].mean())
+            contour_cm = cv2.perspectiveTransform(
+                cnt.astype(np.float32), h).reshape(-1, 2)
+            found.append((cx, contour_cm))
         found.sort(key=lambda t: t[0])  # left-to-right => stable IDs
         out: list[Detection] = []
-        for i, (_, box, ang) in enumerate(found, start=1):
-            pts = box.reshape(-1, 1, 2)
-            cm = cv2.perspectiveTransform(pts, h).reshape(-1, 2)
+        for i, (_, contour_cm) in enumerate(found, start=1):
+            # Fit the vehicle box after rectification. Fitting in image pixels
+            # first makes low-angle perspective inflate/rotate the box.
+            rect_cm = cv2.minAreaRect(contour_cm.astype(np.float32))
+            box_cm = cv2.boxPoints(rect_cm).astype(np.float32)
+            ang = _long_edge_angle_deg(box_cm)
             out.append(Detection(
                 vehicle_id=f"CAR-{i:02d}",
                 polygon=[[round(float(x), 2), round(float(y), 2)]
-                         for x, y in cm],
+                         for x, y in box_cm],
                 angle_deg=round(ang, 1),
                 confidence=0.9,
             ))

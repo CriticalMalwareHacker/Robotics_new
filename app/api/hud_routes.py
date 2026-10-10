@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from backend.services.parking import events, monitor
 from backend.services.parking.analyzer import load_slots
@@ -25,6 +27,11 @@ from .deps import require_api_key
 from .robot_routes import _link as _robot_link, _state as _robot_state
 
 router = APIRouter(dependencies=[Depends(require_api_key)])
+
+
+class ViolationTicketRequest(BaseModel):
+    vehicle_id: str = Field(min_length=1, max_length=64)
+    plate: str = Field(min_length=4, max_length=16)
 
 
 def _cm_to_px(poly_cm: list[list[float]], h_inv: np.ndarray,
@@ -52,7 +59,12 @@ def _devices() -> dict:
         cam = "offline"
     printer = "offline"
     try:
-        if Path("/dev/usb/lp0").exists():
+        printer_transport = os.getenv("PRINTER_TRANSPORT", "usb").lower()
+        printer_device = os.getenv("PRINTER_DEVICE", "/dev/usb/lp0")
+        if (printer_transport in {"bluetooth", "rfcomm", "serial"}
+                and (Path(printer_device).exists() or os.getenv("PRINTER_BLUETOOTH_ADDRESS"))):
+            printer = "ok"
+        elif Path("/dev/usb/lp0").exists():
             printer = "ok"
         elif os.getenv("HARDWARE_MODE", "pc") == "pc" or os.getenv("MOCK_PRINTER"):
             printer = "simulated"
@@ -104,8 +116,8 @@ def hud_state():
                 "violation": r.violation.value if r else None,
                 "confidence": d.confidence,
                 "polygon_px": _cm_to_px(d.polygon, h_inv, scale),
-                "plate": None,  # plate reader lands in Phase 6
-                "plate_conf": None,
+                "plate": d.plate_hint,
+                "plate_conf": d.plate_conf,
             })
     except Exception:
         pass
@@ -165,3 +177,42 @@ def ticket_test_print():
 def ticket_history():
     """Return saved parking tickets, newest first."""
     return get_history()
+
+
+@router.post("/api/ticket/violation")
+def ticket_violation(request: ViolationTicketRequest):
+    """Print a ticket for a currently visible, currently violating vehicle."""
+    plate = re.sub(r"[^A-Z0-9 -]", "", request.plate.strip().upper())
+    if len(plate) < 4:
+        raise HTTPException(status_code=422, detail="Enter a valid plate (at least 4 letters or digits).")
+
+    current = monitor.status()
+    analysis: ParkingAnalysis | None = current.get("last_analysis")
+    det = next((d for d in current.get("last_detections", [])
+                if d.vehicle_id == request.vehicle_id), None)
+    result = next((r for r in (analysis.results if analysis else [])
+                   if r.vehicle_id == request.vehicle_id), None)
+    if det is None or result is None:
+        raise HTTPException(status_code=409, detail="That car is no longer visible. Refresh the HUD and try again.")
+    if result.violation == ViolationType.LEGAL:
+        raise HTTPException(status_code=409, detail="This car is currently parked legally; no ticket was created.")
+
+    from app.services.printer import print_label
+    from backend.services.parking.ticket import build_ticket_image, next_number, save_ticket_png
+
+    number = next_number()
+    now = datetime.now()
+    image = build_ticket_image(number, now.strftime("%Y-%m-%d %H:%M"), plate=plate,
+                               vehicle=request.vehicle_id, slot=result.slot_id or "Unknown",
+                               violation=result.violation.value)
+    image_url = save_ticket_png(image, number)
+    ok, message = print_label(image)
+    record = {"number": number, "status": "printed" if ok else "failed",
+              "message": message, "image_url": image_url, "plate": plate,
+              "vehicle": request.vehicle_id, "slot": result.slot_id or "Unknown",
+              "violation": result.violation.value, "time": now.isoformat(timespec="seconds")}
+    record_ticket(record)
+    events.log("info" if ok else "error",
+               f"Ticket {number} printed for {plate}." if ok
+               else f"Ticket {number} saved, but printer failed: {message}")
+    return {"result": "ok" if ok else "saved", **record}

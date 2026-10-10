@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Toaster } from 'sonner'
-import { estopClear, testPrint } from './api'
+import { estopClear, printViolation, testPrint } from './api'
 import { useHudState } from './useHudState'
 import CameraFeed from './components/CameraFeed'
 import ControlsBar from './components/ControlsBar'
@@ -22,9 +22,10 @@ function themeInitial() {
 
 export default function HudPage() {
   const [theme, setTheme] = useState(themeInitial)
-  const { state, connection, error, refresh, fetchedAt } = useHudState(500)
+  const { state, connection, error, refresh, fetchedAt } = useHudState(1500)
   const [clearing, setClearing] = useState(false)
   const [printing, setPrinting] = useState(false)
+  const [printingId, setPrintingId] = useState(null)
 
   const toggleTheme = () => {
     setTheme((t) => {
@@ -68,7 +69,7 @@ export default function HudPage() {
           {error && <span className="text-muted-foreground"> ({error})</span>}
         </div>
       )}
-      <main className="grid gap-6 p-4 lg:grid-cols-[1fr_340px]">
+      <main className="mx-auto grid w-full max-w-[1600px] grid-cols-1 gap-5 p-3 sm:p-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <CameraFeed
           frame={state?.frame}
           parking={parking}
@@ -77,9 +78,22 @@ export default function HudPage() {
           cameraState={state?.devices?.camera || 'offline'}
           onRetry={refresh}
         />
-        <div className="flex flex-col gap-6">
+        <div className="flex min-w-0 flex-col gap-4">
           <StateCard robotState={robot?.state || 'IDLE'} hasViolation={hasViolation} hasTicket={!!state?.ticket} />
-          <DetectionCard vehicles={vehicles} />
+          <DetectionCard
+            vehicles={vehicles}
+            printingId={printingId}
+            onPrint={async (vehicle, plate) => {
+              setPrintingId(vehicle.id)
+              try {
+                const result = await printViolation(vehicle.id, plate)
+                refresh()
+                return result
+              } finally {
+                setPrintingId(null)
+              }
+            }}
+          />
           <TicketCard ticket={state?.ticket} printing={printing} onPrint={async () => {
             setPrinting(true)
             try { await testPrint(); refresh() } catch { /* toast in controls */ }
@@ -93,7 +107,7 @@ export default function HudPage() {
         estopActive={!!robot?.estop}
         onChanged={refresh}
       />
-      <div className="p-4">
+      <div className="mx-auto w-full max-w-[1600px] px-3 pb-5 sm:px-5">
         <EventLog events={state?.events} />
       </div>
     </div>

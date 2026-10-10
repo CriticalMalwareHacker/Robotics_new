@@ -69,6 +69,15 @@ def _loop(provider: Callable[[], np.ndarray | None], interval_s: float) -> None:
         try:
             frame = provider()
             dets = detector.detect(frame) if frame is not None else []
+            if frame is not None and dets and isinstance(detector, ClassicalDetector):
+                # OCR runs locally on each detected vehicle crop. Any OCR error
+                # degrades to no plate, never to a guessed ticket value.
+                try:
+                    from .plate_reader import read_vehicle_plates
+                    dets = read_vehicle_plates(frame, dets, detector.h,
+                                              detector.calib_size)
+                except Exception as exc:
+                    logger.warning("plate OCR unavailable for this frame: %s", exc)
             analysis = analyze_frame(dets, slots)
             flags = {r.vehicle_id: deb.update(r.vehicle_id,
                                               r.violation.value != "LEGAL")

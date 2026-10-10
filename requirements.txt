@@ -28,6 +28,10 @@ pyusb>=1.2.1
 opencv-python-headless>=4.8.0
 pyserial>=3.5
 
+# Offline plate-text OCR (small CPU ONNX models; initialized on first detection)
+rapidocr>=3.10,<4
+onnxruntime>=1.20
+
 # Test suite
 pytest>=8.0.0
 

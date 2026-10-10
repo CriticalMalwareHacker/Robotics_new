@@ -1,59 +1,106 @@
+import { useState } from 'react'
+import { AlertTriangle, Check, Printer } from 'lucide-react'
+import { toast } from 'sonner'
 import { Badge } from '../../components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
-import { Progress } from '../../components/ui/progress'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs'
+import { Button } from '../../components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 
-function Row({ label, children }) {
+export default function DetectionCard({ vehicles = [], printingId, onPrint }) {
+  const [plates, setPlates] = useState({})
+  const violations = vehicles.filter((vehicle) => vehicle.valid === false)
+  const legalCount = vehicles.filter((vehicle) => vehicle.valid === true).length
+  const unknownCount = vehicles.filter((vehicle) => vehicle.valid == null).length
+
+  const print = async (vehicle) => {
+    const plate = (plates[vehicle.id] ?? vehicle.plate ?? '').trim().toUpperCase()
+    if (plate.length < 4) {
+      toast.error('Enter the plate number before printing.')
+      return
+    }
+    try {
+      await onPrint(vehicle, plate)
+      toast.success(`Ticket sent for ${plate}.`)
+    } catch (error) {
+      toast.error(error.message || 'Could not print the ticket.')
+    }
+  }
+
   return (
-    <div className="flex items-baseline justify-between gap-3 py-1 text-sm">
-      <span className="font-medium text-muted-foreground">{label}</span>
-      <span className="text-right">{children}</span>
-    </div>
-  )
-}
-
-const dash = <span className="text-muted-foreground">–</span>
-
-export default function DetectionCard({ vehicles }) {
-  const list = vehicles || []
-  const v = list[0]
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Latest detection</CardTitle>
+    <Card className="overflow-hidden">
+      <CardHeader className="space-y-1 pb-3">
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle>Parking violations</CardTitle>
+          <Badge className={violations.length ? 'hud-bad' : 'hud-ok'}>
+            {violations.length} {violations.length === 1 ? 'vehicle' : 'vehicles'}
+          </Badge>
+        </div>
+        <CardDescription>Visible cars currently outside the parking rules.</CardDescription>
       </CardHeader>
-      <CardContent>
-        {!v && <p className="text-sm text-muted-foreground">No vehicle in view. Place a test car on the mat.</p>}
-        {v && (
-          <Tabs defaultValue="details">
-            <TabsList aria-label="Detection views">
-              <TabsTrigger value="details">Details</TabsTrigger>
-              <TabsTrigger value="crops">Crops</TabsTrigger>
-            </TabsList>
-            <TabsContent value="details">
-              <Row label="Vehicle">{v.id || dash}</Row>
-              <Row label="Slot">{v.slot || dash}</Row>
-              <Row label="Status">
-                {v.valid == null ? dash : v.valid
-                  ? <Badge dotClassName="hud-dot-ok" className="hud-ok">Legal</Badge>
-                  : <Badge dotClassName="hud-dot-bad" className="hud-bad">Violation</Badge>}
-              </Row>
-              <Row label="Plate">{v.plate || dash}</Row>
-              <Row label="Confidence">
-                {v.confidence == null
-                  ? dash
-                  : <span className="tnum">{Math.round(v.confidence * 100)}%</span>}
-              </Row>
-              <Row label="Violation type">{v.violation || dash}</Row>
-              {v.confidence != null && <Progress className="mt-2" value={Math.round(v.confidence * 100)} aria-label="Confidence" />}
-              {list.length > 1 && (
-                <p className="mt-2 text-xs text-muted-foreground">+{list.length - 1} more vehicle{list.length > 2 ? 's' : ''} in view.</p>
-              )}
-            </TabsContent>
-            <TabsContent value="crops">
-              <p className="text-sm text-muted-foreground">Car and plate crops appear here once the plate reader lands.</p>
-            </TabsContent>
-          </Tabs>
+      <CardContent className="space-y-3">
+        {vehicles.length === 0 && (
+          <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+            No cars detected in the parking area.
+          </div>
+        )}
+        {vehicles.length > 0 && violations.length === 0 && legalCount === vehicles.length && (
+          <div className="flex items-center gap-3 rounded-md border border-border bg-muted/40 p-4 text-sm">
+            <Check className="h-4 w-4 hud-ok" />
+            <span>{vehicles.length} visible {vehicles.length === 1 ? 'car is' : 'cars are'} parked legally.</span>
+          </div>
+        )}
+        {unknownCount > 0 && violations.length === 0 && (
+          <div className="rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+            Parking analysis is updating for {unknownCount} visible {unknownCount === 1 ? 'car' : 'cars'}.
+          </div>
+        )}
+        {violations.map((vehicle) => {
+          const plate = plates[vehicle.id] ?? vehicle.plate ?? ''
+          const isPrinting = printingId === vehicle.id
+          return (
+            <div key={vehicle.id} className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-destructive" />
+                    <span className="font-medium">{vehicle.id}</span>
+                    <Badge className="border-destructive/30 bg-destructive/10 text-destructive">Violation</Badge>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {vehicle.violation?.replaceAll('_', ' ') || 'Parking violation'}
+                    {vehicle.slot ? ` · ${vehicle.slot}` : ''}
+                  </p>
+                </div>
+                {vehicle.confidence != null && (
+                  <span className="text-xs text-muted-foreground">{Math.round(vehicle.confidence * 100)}% detection</span>
+                )}
+              </div>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <input
+                  aria-label={`License plate for ${vehicle.id}`}
+                  autoComplete="off"
+                  maxLength={16}
+                  placeholder="Enter plate number"
+                  value={plate}
+                  onChange={(event) => setPlates((current) => ({ ...current, [vehicle.id]: event.target.value.toUpperCase() }))}
+                  className="h-10 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-sm uppercase outline-none placeholder:normal-case placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
+                />
+                <Button className="sm:min-w-36" disabled={plate.trim().length < 4 || isPrinting} onClick={() => print(vehicle)}>
+                  <Printer className={isPrinting ? 'animate-pulse' : ''} />
+                  {isPrinting ? 'Printing…' : 'Print ticket'}
+                </Button>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {vehicle.plate && vehicle.plate_conf != null
+                  ? `OCR read ${Math.round(vehicle.plate_conf * 100)}% confidence · verify before printing.`
+                  : 'Plate not read clearly · enter or correct it before printing.'}
+              </p>
+            </div>
+          )
+        })}
+        {legalCount > 0 && violations.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {legalCount} other visible {legalCount === 1 ? 'car is' : 'cars are'} parked legally.
+          </p>
         )}
       </CardContent>
     </Card>

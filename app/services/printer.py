@@ -9,6 +9,7 @@ except ImportError:  # pragma: no cover - laptop fallback, Pi keeps real fcntl
 import logging
 import os
 import shutil
+import socket
 import subprocess
 import time
 from dataclasses import dataclass
@@ -31,6 +32,9 @@ class PrinterConfig:
     device: str = os.getenv("PRINTER_DEVICE", "/dev/usb/lp0")
     cups_queue: str = os.getenv("CUPS_QUEUE", "POSIFLOW58D")
     use_cups: bool = os.getenv("PRINTER_USE_CUPS", "false").lower() in {"1", "true", "yes"}
+    transport: str = os.getenv("PRINTER_TRANSPORT", "usb").lower()
+    bluetooth_address: str = os.getenv("PRINTER_BLUETOOTH_ADDRESS", "")
+    bluetooth_channel: int = int(os.getenv("PRINTER_BLUETOOTH_CHANNEL", "1"))
 
 
 def prepare_image_for_printing(image: Image.Image, target_width: int = THERMAL_PRINT_WIDTH_PX) -> Image.Image:
@@ -246,8 +250,31 @@ def _write_direct_device_node(device_path: str, payload: bytes) -> tuple[bool, s
 
 
 def send_to_printer(payload: bytes, config: PrinterConfig | None = None) -> tuple[bool, str]:
-    """Write raw ESC/POS bytes to printer using PyUSB direct transfer, /dev/usb/lp0, or CUPS fallback."""
+    """Write ESC/POS bytes through USB/CUPS or a Bluetooth RFCOMM device node."""
     config = config or PrinterConfig()
+
+    # HOIN ESC/POS Bluetooth printers on Raspberry Pi are exposed as /dev/rfcomm0
+    # after pairing/binding. Route exclusively through that node when selected.
+    if config.transport in {"bluetooth", "rfcomm", "serial"}:
+        if config.bluetooth_address:
+            try:
+                if not hasattr(socket, "AF_BLUETOOTH"):
+                    return False, "This OS does not provide Bluetooth RFCOMM sockets"
+                with socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM) as bt:
+                    bt.settimeout(10)
+                    bt.connect((config.bluetooth_address, config.bluetooth_channel))
+                    for offset in range(0, len(payload), 512):
+                        bt.sendall(payload[offset:offset + 512])
+                        time.sleep(0.002)
+                return True, f"Printed via Bluetooth RFCOMM ({config.bluetooth_address})"
+            except (OSError, AttributeError) as exc:
+                return False, f"Bluetooth print failed ({config.bluetooth_address}): {exc}"
+        if not os.path.exists(config.device):
+            return False, f"Bluetooth printer device {config.device} is unavailable; pair/bind it first"
+        try:
+            return _write_direct_device_node(config.device, payload)
+        except OSError as exc:
+            return False, f"Bluetooth printer write failed on {config.device}: {exc}"
 
     # 1. Primary path on Linux/Pi: PyUSB direct bulk transfer (bypasses usblp read bug)
     if not config.use_cups:

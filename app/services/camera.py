@@ -117,8 +117,17 @@ class CameraManager:
                 time.sleep(0.03)
         return cap
 
+    def _clear_latest_frame(self):
+        """Drop cached imagery so a disconnected camera cannot look live."""
+        with self._lock:
+            self._latest_jpeg = None
+            self._latest_frame_bgr = None
+            self._latest_shape = None
+            self._last_brightness = 0.0
+
     def _worker(self):
         logger.info("Starting background camera worker (LED turns BLUE)...")
+        self._clear_latest_frame()
         dev_idx = self._get_device_index()
         cap = self._open_capture(dev_idx)
 
@@ -126,6 +135,7 @@ class CameraManager:
             logger.error("Could not open USB camera.")
             cap.release()
             self._running = False
+            self._clear_latest_frame()
             return
 
         self._cap = cap
@@ -175,6 +185,7 @@ class CameraManager:
             cap.release()
             self._cap = None
             self._running = False
+            self._clear_latest_frame()
             logger.info("Camera released successfully (LED is RED).")
 
     def ensure_started(self):
@@ -227,6 +238,10 @@ class CameraManager:
                 except Exception:
                     pass
                 self._cap = None
+            self._latest_jpeg = None
+            self._latest_frame_bgr = None
+            self._latest_shape = None
+            self._last_brightness = 0.0
 
 
 camera_manager = CameraManager()

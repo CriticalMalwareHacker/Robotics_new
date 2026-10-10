@@ -17,8 +17,8 @@ The serial protocol is 115200 baud, newline-delimited ASCII:
 PING                         -> PONG
 MOVE F 120 200               -> OK MOVE
 MOVE B 120 200               -> OK MOVE
-MOVE L 120 200               -> OK MOVE
-MOVE R 120 200               -> OK MOVE
+MOVE L 120 200               -> OK MOVE (left wheel released; right wheel forward)
+MOVE R 120 200               -> OK MOVE (right wheel released; left wheel forward)
 STOP                         -> OK STOP
 ESTOP                        -> OK ESTOP
 CLEAR                        -> OK CLEAR
@@ -26,9 +26,11 @@ STATUS                       -> STATUS IDLE | STATUS MOVING | STATUS ESTOP
 ```
 
 The firmware caps each movement lease at 500 ms and releases both motors when
-that lease expires. The HUD renews a short lease while a manual-drive control
-is held and sends `STOP` on release. This software stop is not a substitute for
-a physical motor-power switch or hardware emergency stop.
+that lease expires. `L` and `R` turn by releasing the inside wheel and driving
+only the outside wheel forward, rather than counter-rotating both wheels. The
+HUD renews a short lease while a manual-drive control is held and sends `STOP`
+on release. This software stop is not a substitute for a physical motor-power
+switch or hardware emergency stop.
 
 ## 2. Connect and identify the Uno on the Pi
 

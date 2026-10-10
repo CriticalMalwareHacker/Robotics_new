@@ -3,14 +3,17 @@ import { getHudState } from './api'
 
 /* Owns HUD polling. Exposes {state, connection, error, refresh}.
  * Pauses when the tab is hidden, fetches immediately when visible again. */
-export function useHudState(intervalMs = 500) {
+export function useHudState(intervalMs = 1500) {
   const [state, setState] = useState(null)
   const [connection, setConnection] = useState('connecting') // connecting | ok | offline
   const [error, setError] = useState('')
   const [fetchedAt, setFetchedAt] = useState(0)
   const timerRef = useRef(null)
+  const requestInFlight = useRef(false)
 
   const refresh = useCallback(async () => {
+    if (requestInFlight.current) return
+    requestInFlight.current = true
     try {
       const s = await getHudState()
       setState(s)
@@ -19,7 +22,9 @@ export function useHudState(intervalMs = 500) {
       setError('')
     } catch (e) {
       setConnection('offline')
-      setError(e.message || 'Backend unreachable.')
+      setError(e.name === 'AbortError' ? 'Request timed out.' : (e.message || 'Backend unreachable.'))
+    } finally {
+      requestInFlight.current = false
     }
   }, [])
 

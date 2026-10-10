@@ -42,4 +42,8 @@ export const drive = (command, speed, durationMs) =>
     body: JSON.stringify({ command, speed, duration_ms: durationMs }),
   })
 export const testPrint = () => request('/api/ticket/test-print', { method: 'POST' })
+export const printViolation = (vehicleId, plate) => request('/api/ticket/violation', {
+  method: 'POST',
+  body: JSON.stringify({ vehicle_id: vehicleId, plate }),
+})
 export const getTicketHistory = () => request('/api/ticket/history')
