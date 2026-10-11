@@ -71,6 +71,27 @@ the backend. The current **Start auto** action only starts the vision monitor;
 autonomous motor navigation is not implemented yet and is rejected in real
 robot mode.
 
-The ultrasonic sensor is not included in this first serial protocol. Add its
-Arduino wiring/readings and a stop rule as a separate step after manual serial
-driving works on the Pi.
+## 4. Add the front ultrasonic sensor (HC-SR04)
+
+With power disconnected, wire the sensor to the Arduino Uno, not the Raspberry
+Pi GPIO:
+
+| HC-SR04 pin | Arduino Uno |
+| --- | --- |
+| VCC | 5V |
+| GND | GND |
+| TRIG | A0 |
+| ECHO | A1 |
+
+The Adafruit Motor Shield V1 uses digital pins 3-12; A0 and A1 are left free
+and are exposed on its analog header. Keep the sensor facing forward and level.
+Use short jumper wires and make sure the sensor and Uno share ground. Never
+connect the HC-SR04 Echo pin to a Raspberry Pi GPIO pin.
+
+After uploading the updated sketch, when the motors are idle, an object closer
+than 18 cm for two readings causes a 250 ms reverse at PWM 120. The sensor
+re-arms after the object is at least 26 cm away (or no echo is detected for two
+readings), so a hand held in front does not continuously trigger reverse.
+Manual drive and E-stop behavior remain available; the sensor does not
+override a movement already in progress. Test with the wheels raised first,
+then test on the floor with clear space behind the robot.
