@@ -12,7 +12,7 @@ from datetime import datetime
 import json
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from app.services.printer import THERMAL_PRINT_WIDTH_PX
 
@@ -67,50 +67,132 @@ def next_number() -> str:
 
 def build_ticket_image(number: str, when: str, plate: str, vehicle: str,
                        slot: str, violation: str) -> Image.Image:
-    """Render the violation notice; returns an RGB Pillow image (384 wide)."""
-    lines = [
-        ("PARKING VIOLATION", 28, True),
-        ("NOTICE (DEMO)", 28, True),
-        ("", 10, False),
-        (f"Ticket  {number}", 20, False),
-        (f"Date    {when}", 20, False),
-        ("", 10, False),
-        (f"Plate   {plate}", 22, False),
-        (f"Vehicle {vehicle}", 20, False),
-        (f"Slot    {slot}", 20, False),
-        (f"Offence {violation}", 20, False),
-        ("", 10, False),
-        ("Academic prototype.", 18, False),
-        ("Not a real fine.", 18, False),
-    ]
-    # dry-run height with default font
-    tmp = Image.new("RGB", (W, 10), "white")
-    d = ImageDraw.Draw(tmp)
-    y = MARGIN
-    heights: list[int] = []
-    for text, size, _bold in lines:
-        if not text:
-            y += size
-            heights.append(size)
-            continue
-        box = d.textbbox((0, 0), text)
-        h = (box[3] - box[1]) + 6
-        heights.append(h)
-        y += h
-    y += MARGIN
+    """Render a legible, printer-width parking notice as an RGB image."""
+    # Use a scalable font when available, while retaining compatibility with
+    # minimal Raspberry Pi/Pillow installations that only have the bitmap font.
+    font_paths = {
+        "regular": (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "C:/Windows/Fonts/arial.ttf",
+        ),
+        "bold": (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "C:/Windows/Fonts/arialbd.ttf",
+        ),
+    }
 
-    img = Image.new("RGB", (W, y), "white")
+    def load_font(kind: str, size: int):
+        for path in font_paths[kind]:
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                continue
+        return ImageFont.load_default()
+
+    fonts = {
+        "brand": load_font("bold", 17),
+        "title": load_font("bold", 23),
+        "section": load_font("bold", 13),
+        "body": load_font("regular", 15),
+        "body_bold": load_font("bold", 16),
+        "small": load_font("regular", 12),
+    }
+
+    # Measure and lay out first so long IDs and violation names wrap instead
+    # of being clipped at the 58 mm printer's 384-dot width.
+    img = Image.new("RGB", (W, 10), "white")
     d = ImageDraw.Draw(img)
-    y = MARGIN
-    for (text, _size, _bold), h in zip(lines, heights):
-        if text:
-            box = d.textbbox((0, 0), text)
-            w = box[2] - box[0]
-            d.text(((W - w) / 2, y), text, fill="black")
-        y += h
-    # border
-    d.rectangle([2, 2, W - 3, y - MARGIN + 6], outline="black", width=2)
-    return img
+    inner_left, inner_right = MARGIN + 5, W - MARGIN - 5
+    content_width = inner_right - inner_left
+    blocks: list[tuple[str, object, int, str]] = []
+    y = MARGIN + 5
+
+    def add_text(text: str, font, *, align: str = "left", gap: int = 3):
+        nonlocal y
+        box = d.textbbox((0, 0), text or " ", font=font)
+        height = box[3] - box[1]
+        blocks.append((text, font, y, align))
+        y += height + gap
+
+    def add_wrapped(label: str, value: str, font, *, gap: int = 4):
+        nonlocal y
+        text = f"{label}: {value or '—'}" if label else (value or '—')
+        words = text.split()
+        rows: list[str] = []
+        row = ""
+        for word in words:
+            candidate = f"{row} {word}".strip()
+            if row and d.textlength(candidate, font=font) > content_width:
+                rows.append(row)
+                row = word
+            else:
+                row = candidate
+        if row:
+            rows.append(row)
+        for line in rows:
+            add_text(line, font, gap=1)
+        y += gap
+
+    add_text("PARKSENSEI", fonts["brand"], align="center", gap=2)
+    # A double rule separates the brand from the actual notice.
+    y += 2
+    blocks.append(("RULE", None, y, ""))
+    y += 9
+    add_text("PARKING NOTICE", fonts["title"], align="center", gap=1)
+    add_text("ACADEMIC PROTOTYPE  •  NOT A FINE", fonts["small"], align="center", gap=8)
+
+    add_wrapped("Ticket", number, fonts["body"])
+    add_wrapped("Issued", when, fonts["body"])
+
+    # Enclosed vehicle identifier is the most useful item to spot at a glance.
+    y += 3
+    plate_box_top = y
+    plate_box_height = 58
+    blocks.append(("PLATE_BOX", None, plate_box_top, ""))
+    y += 6
+    add_text("VEHICLE PLATE", fonts["section"], align="center", gap=1)
+    add_text(plate or "—", fonts["title"], align="center", gap=5)
+    blocks.append(("PLATE_BOX_END", None, y, ""))
+    y += 8
+
+    add_wrapped("Vehicle", vehicle, fonts["body"])
+    add_wrapped("Parking bay", slot, fonts["body"])
+
+    y += 2
+    blocks.append(("RULE", None, y, ""))
+    y += 8
+    add_text("OBSERVED VIOLATION", fonts["section"], gap=3)
+    add_wrapped("", violation.replace("_", " ").replace("-", " ").upper(),
+                fonts["body_bold"], gap=4)
+
+    y += 3
+    blocks.append(("RULE", None, y, ""))
+    y += 8
+    add_text("Academic prototype only.", fonts["small"], align="center", gap=1)
+    add_text("This notice is not a real fine.", fonts["small"], align="center", gap=5)
+    height = y + MARGIN + 2
+
+    out = Image.new("RGB", (W, height), "white")
+    draw = ImageDraw.Draw(out)
+    # Thin outer frame with generous printer-safe inset.
+    draw.rectangle([2, 2, W - 3, height - 3], outline="black", width=2)
+    for kind, _font, block_y, align in blocks:
+        if kind == "RULE":
+            draw.line((inner_left, block_y, inner_right, block_y), fill="black", width=1)
+        elif kind == "PLATE_BOX":
+            draw.rectangle((inner_left, block_y, inner_right, block_y + plate_box_height),
+                           outline="black", width=2)
+        elif kind == "PLATE_BOX_END":
+            draw.line((inner_left, block_y, inner_right, block_y), fill="black", width=1)
+        else:
+            text, font = kind, _font
+            if align == "center":
+                text_width = draw.textlength(text, font=font)
+                x = (W - text_width) / 2
+            else:
+                x = inner_left
+            draw.text((x, block_y), text, fill="black", font=font)
+    return out
 
 
 def save_ticket_png(image: Image.Image, number: str) -> str:
