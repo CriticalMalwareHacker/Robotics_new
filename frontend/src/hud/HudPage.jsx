@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Toaster } from 'sonner'
-import { estopClear, printViolation, testPrint } from './api'
+import { toast } from 'sonner'
+import { autoResume, confirmParkingReview, estopClear, printViolation, testPrint } from './api'
 import { useHudState } from './useHudState'
 import CameraFeed from './components/CameraFeed'
 import ControlsBar from './components/ControlsBar'
@@ -79,10 +80,29 @@ export default function HudPage() {
           onRetry={refresh}
         />
         <div className="flex min-w-0 flex-col gap-4">
-          <StateCard robotState={robot?.state || 'IDLE'} hasViolation={hasViolation} hasTicket={!!state?.ticket} />
+          <StateCard robotState={robot?.state || 'IDLE'} hasViolation={hasViolation}
+            hasTicket={!!state?.ticket} lastError={robot?.last_error}
+            distanceCm={robot?.distance_cm} irBlocked={robot?.ir_blocked}
+            obstacle={robot?.obstacle} reviewReady={!!robot?.review_ready}
+            reviewConfirmedCount={robot?.review_confirmed?.length || 0}
+            reviewTicketedCount={robot?.review_ticketed?.length || 0}
+            reviewTotal={robot?.review_vehicles?.length || 0} />
           <DetectionCard
             vehicles={vehicles}
             printingId={printingId}
+            reviewMode={robot?.mode === 'review'}
+            reviewVehicles={robot?.review_vehicles || []}
+            reviewConfirmed={robot?.review_confirmed || []}
+            reviewTicketed={robot?.review_ticketed || []}
+            reviewReady={!!robot?.review_ready}
+            onConfirm={async (vehicle) => {
+              await confirmParkingReview(vehicle.id)
+              await refresh()
+            }}
+            onResume={async () => {
+              try { await autoResume(); refresh(); toast.success('Patrol resumed.') }
+              catch (error) { toast.error(error.message || 'Could not resume patrol.') }
+            }}
             onPrint={async (vehicle, plate) => {
               setPrintingId(vehicle.id)
               try {
@@ -103,7 +123,7 @@ export default function HudPage() {
       </main>
       <ControlsBar
         driveEnabled={driveEnabled}
-        autoRunning={robot?.mode === 'auto'}
+        autoRunning={robot?.mode === 'auto' || robot?.mode === 'review'}
         estopActive={!!robot?.estop}
         onChanged={refresh}
       />

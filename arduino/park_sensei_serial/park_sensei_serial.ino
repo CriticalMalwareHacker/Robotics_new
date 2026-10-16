@@ -1,5 +1,6 @@
 /*
- * ParkSensei manual-drive firmware for Arduino Uno + Adafruit Motor Shield V1.
+ * ParkSensei serial-drive firmware for Arduino Uno + Adafruit Motor Shield V1.
+ * Four motors are grouped by side: M1+M3 left, M2+M4 right.
  *
  * Serial protocol at 115200 baud, one ASCII command per line:
  *   PING                         -> PONG
@@ -19,110 +20,57 @@
 
 AF_DCMotor motor1(1);
 AF_DCMotor motor2(2);
+AF_DCMotor motor3(3);
+AF_DCMotor motor4(4);
 
+// Physical side mapping for a four-wheel skid-steer chassis.
+AF_DCMotor *const LEFT_FRONT_MOTOR = &motor1;
+AF_DCMotor *const RIGHT_FRONT_MOTOR = &motor2;
+AF_DCMotor *const LEFT_REAR_MOTOR = &motor3;
+AF_DCMotor *const RIGHT_REAR_MOTOR = &motor4;
+
+// Keep the lease close to the backend's short refresh interval: if serial
+// commands stop arriving, full-power movement ends within 220 ms by default.
+const unsigned long MIN_MOVE_MS = 100;
 const unsigned long MAX_MOVE_MS = 500;
-const unsigned long MIN_MOVE_MS = 350;
+// All four channels were confirmed to start at full PWM in the V1 diagnostic.
+// Use that proven level for manual movement so loaded rear motors start too.
+const int MIN_DRIVE_PWM = 255;
 const size_t LINE_CAPACITY = 48;
-
-// HC-SR04 wired to the Uno's unused analog pins. The Motor Shield V1 uses
-// digital pins 3-12, leaving A0/A1 available as digital I/O.
-const uint8_t ULTRASONIC_TRIG_PIN = A0;
-const uint8_t ULTRASONIC_ECHO_PIN = A1;
-const unsigned long SENSOR_SAMPLE_INTERVAL_MS = 70;
-const unsigned long SENSOR_ECHO_TIMEOUT_US = 12000UL;
-const unsigned int SENSOR_TRIGGER_DISTANCE_CM = 18;
-const unsigned int SENSOR_CLEAR_DISTANCE_CM = 26;
-const uint8_t SENSOR_CONFIRM_SAMPLES = 2;
-const int SENSOR_REVERSE_SPEED = 120;
-const unsigned long SENSOR_REVERSE_MS = 250;
-const unsigned long SENSOR_COOLDOWN_MS = 1200;
 
 char lineBuffer[LINE_CAPACITY];
 size_t lineLength = 0;
 bool estopLatched = false;
 bool moving = false;
 unsigned long stopAt = 0;
-unsigned long lastSensorSampleAt = 0;
-unsigned long lastSensorActionAt = 0;
-uint8_t nearSamples = 0;
-uint8_t clearSamples = 0;
-bool sensorArmed = true;
-bool sensorHasActed = false;
 
 void stopMotors()
 {
   motor1.run(RELEASE);
   motor2.run(RELEASE);
+  motor3.run(RELEASE);
+  motor4.run(RELEASE);
   moving = false;
 }
 
-unsigned int readDistanceCm()
+void setAllSpeeds(int speed)
 {
-  digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
-  delayMicroseconds(2);
-  digitalWrite(ULTRASONIC_TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
-
-  const unsigned long echoUs = pulseIn(
-      ULTRASONIC_ECHO_PIN, HIGH, SENSOR_ECHO_TIMEOUT_US);
-  if (echoUs == 0)
-    return 0; // No echo means no nearby obstacle was measured.
-  return (unsigned int)(echoUs / 58UL);
+  motor1.setSpeed(speed);
+  motor2.setSpeed(speed);
+  motor3.setSpeed(speed);
+  motor4.setSpeed(speed);
 }
 
-void checkUltrasonicSensor(unsigned long now)
+void driveLeftSide(uint8_t direction)
 {
-  if ((unsigned long)(now - lastSensorSampleAt) < SENSOR_SAMPLE_INTERVAL_MS)
-    return;
-  lastSensorSampleAt = now;
+  LEFT_FRONT_MOTOR->run(direction);
+  LEFT_REAR_MOTOR->run(direction);
+}
 
-  const unsigned int distanceCm = readDistanceCm();
-  const bool nearObject = distanceCm > 0 && distanceCm <= SENSOR_TRIGGER_DISTANCE_CM;
-  const bool clear = distanceCm == 0 || distanceCm >= SENSOR_CLEAR_DISTANCE_CM;
-
-  if (clear)
-  {
-    nearSamples = 0;
-    if (clearSamples < SENSOR_CONFIRM_SAMPLES)
-      clearSamples++;
-    if (clearSamples >= SENSOR_CONFIRM_SAMPLES)
-      sensorArmed = true;
-    return;
-  }
-
-  clearSamples = 0;
-  if (!nearObject || !sensorArmed)
-  {
-    nearSamples = 0;
-    return;
-  }
-
-  // Only trigger from rest. This keeps a hand test from fighting a manual
-  // drive command and prevents the sensor from reversing during a turn.
-  if (moving || estopLatched)
-  {
-    nearSamples = 0;
-    return;
-  }
-
-  if (nearSamples < SENSOR_CONFIRM_SAMPLES)
-    nearSamples++;
-  const bool cooldownElapsed = !sensorHasActed ||
-                               (unsigned long)(now - lastSensorActionAt) >= SENSOR_COOLDOWN_MS;
-  if (nearSamples < SENSOR_CONFIRM_SAMPLES || !cooldownElapsed)
-    return;
-
-  motor1.setSpeed(SENSOR_REVERSE_SPEED);
-  motor2.setSpeed(SENSOR_REVERSE_SPEED);
-  motor1.run(BACKWARD);
-  motor2.run(BACKWARD);
-  moving = true;
-  stopAt = now + SENSOR_REVERSE_MS;
-  lastSensorActionAt = now;
-  sensorHasActed = true;
-  sensorArmed = false;
-  nearSamples = 0;
+void driveRightSide(uint8_t direction)
+{
+  RIGHT_FRONT_MOTOR->run(direction);
+  RIGHT_REAR_MOTOR->run(direction);
 }
 
 void beginMove(char direction, int speed, unsigned long durationMs)
@@ -141,30 +89,33 @@ void beginMove(char direction, int speed, unsigned long durationMs)
     return;
   }
 
+  // The app's default PWM is 120; raise nonzero commands to the known-working
+  // diagnostic level so all four loaded motors start.
+  if (speed < MIN_DRIVE_PWM)
+    speed = MIN_DRIVE_PWM;
+
   durationMs = constrain(durationMs, MIN_MOVE_MS, MAX_MOVE_MS);
-  motor1.setSpeed(speed);
-  motor2.setSpeed(speed);
+  setAllSpeeds(speed);
 
   switch (direction)
   {
   case 'F':
-    motor1.run(FORWARD);
-    motor2.run(FORWARD);
+    driveLeftSide(FORWARD);
+    driveRightSide(FORWARD);
     break;
   case 'B':
-    motor1.run(BACKWARD);
-    motor2.run(BACKWARD);
+    driveLeftSide(BACKWARD);
+    driveRightSide(BACKWARD);
     break;
   case 'L':
-    // Motor 1 is the left wheel: hold it and drive the right wheel forward.
-    // This avoids counter-rotating both motors against the robot's weight.
-    motor1.run(RELEASE);
-    motor2.run(FORWARD);
+    // Counter-rotate both sides so all four motors contribute to the turn.
+    driveLeftSide(BACKWARD);
+    driveRightSide(FORWARD);
     break;
   case 'R':
-    // Motor 2 is the right wheel: hold it and drive the left wheel forward.
-    motor1.run(FORWARD);
-    motor2.run(RELEASE);
+    // Counter-rotate both sides so all four motors contribute to the turn.
+    driveLeftSide(FORWARD);
+    driveRightSide(BACKWARD);
     break;
   default:
     stopMotors();
@@ -234,9 +185,6 @@ void handleLine(char *line)
 void setup()
 {
   Serial.begin(115200);
-  pinMode(ULTRASONIC_TRIG_PIN, OUTPUT);
-  pinMode(ULTRASONIC_ECHO_PIN, INPUT);
-  digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
   stopMotors();
   Serial.println("READY");
 }
@@ -248,6 +196,7 @@ void loop()
     const char c = (char)Serial.read();
     if (c == '\r')
       continue;
+
     if (c == '\n')
     {
       lineBuffer[lineLength] = '\0';
@@ -267,10 +216,7 @@ void loop()
     }
   }
 
-  // Every movement expires automatically. The HUD renews its short command
-  // while a button is held and sends STOP as soon as it is released.
   const unsigned long now = millis();
   if (moving && (long)(now - stopAt) >= 0)
     stopMotors();
-  checkUltrasonicSensor(now);
 }

@@ -36,6 +36,7 @@ export default function TopBar({ devices, theme, onToggleTheme }) {
           <DeviceBadge name="Camera" status={d.camera} />
           <DeviceBadge name="Arduino" status={d.arduino} />
           <DeviceBadge name="Ultrasonic" status={d.ultrasonic} />
+          <DeviceBadge name="IR obstacle" status={d.ir} />
           <DeviceBadge name="Printer" status={d.printer} />
           <DeviceBadge name="Backend" status={d.backend} />
         </TooltipProvider>

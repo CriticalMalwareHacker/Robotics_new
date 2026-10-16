@@ -34,6 +34,11 @@ export const frameUrl = (t = Date.now()) => `${API_URL}/api/parking/frame?t=${t}
 
 export const autoStart = () => request('/api/robot/auto/start', { method: 'POST' })
 export const autoStop = () => request('/api/robot/auto/stop', { method: 'POST' })
+export const autoResume = () => request('/api/robot/auto/resume', { method: 'POST' })
+export const confirmParkingReview = (vehicleId) => request('/api/robot/review/confirm', {
+  method: 'POST',
+  body: JSON.stringify({ vehicle_id: vehicleId }),
+})
 export const estop = () => request('/api/robot/estop', { method: 'POST' })
 export const estopClear = () => request('/api/robot/estop/clear', { method: 'POST' })
 export const drive = (command, speed, durationMs) =>

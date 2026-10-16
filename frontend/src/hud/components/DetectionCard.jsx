@@ -1,12 +1,24 @@
-import { useState } from 'react'
-import { AlertTriangle, Check, Printer } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { AlertTriangle, Check, Printer, Play } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 
-export default function DetectionCard({ vehicles = [], printingId, onPrint }) {
+export default function DetectionCard({
+  vehicles = [], printingId, onPrint, reviewMode, reviewVehicles = [],
+  reviewConfirmed = [], reviewTicketed = [], reviewReady = false,
+  onConfirm, onResume,
+}) {
   const [plates, setPlates] = useState({})
+  const [confirmed, setConfirmed] = useState({})
+  const [printed, setPrinted] = useState({})
+  const [confirmingId, setConfirmingId] = useState(null)
+  const reviewKey = reviewVehicles.join('|')
+  useEffect(() => {
+    setConfirmed({})
+    setPrinted({})
+  }, [reviewMode, reviewKey])
   const violations = vehicles.filter((vehicle) => vehicle.valid === false)
   const legalCount = vehicles.filter((vehicle) => vehicle.valid === true).length
   const unknownCount = vehicles.filter((vehicle) => vehicle.valid == null).length
@@ -18,10 +30,31 @@ export default function DetectionCard({ vehicles = [], printingId, onPrint }) {
       return
     }
     try {
-      await onPrint(vehicle, plate)
-      toast.success(`Ticket sent for ${plate}.`)
+      const result = await onPrint(vehicle, plate)
+      if (result?.status !== 'printed') {
+        toast.error(result?.message || 'Ticket was saved, but the printer did not confirm printing. Retry before continuing.')
+        return
+      }
+      setPrinted((current) => ({ ...current, [vehicle.id]: true }))
+      toast.success(`Ticket printed for ${plate}.`)
     } catch (error) {
       toast.error(error.message || 'Could not print the ticket.')
+    }
+  }
+
+  const confirm = async (vehicle) => {
+    if (!reviewMode) {
+      setConfirmed((current) => ({ ...current, [vehicle.id]: true }))
+      return
+    }
+    setConfirmingId(vehicle.id)
+    try {
+      await onConfirm?.(vehicle)
+      setConfirmed((current) => ({ ...current, [vehicle.id]: true }))
+    } catch (error) {
+      toast.error(error.message || 'Could not confirm this review.')
+    } finally {
+      setConfirmingId(null)
     }
   }
 
@@ -56,6 +89,11 @@ export default function DetectionCard({ vehicles = [], printingId, onPrint }) {
         {violations.map((vehicle) => {
           const plate = plates[vehicle.id] ?? vehicle.plate ?? ''
           const isPrinting = printingId === vehicle.id
+          const isReviewVehicle = reviewVehicles.includes(vehicle.id)
+          const isConfirmed = reviewMode
+            ? reviewConfirmed.includes(vehicle.id) || confirmed[vehicle.id]
+            : confirmed[vehicle.id]
+          const isPrinted = reviewTicketed.includes(vehicle.id) || printed[vehicle.id]
           return (
             <div key={vehicle.id} className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -84,16 +122,29 @@ export default function DetectionCard({ vehicles = [], printingId, onPrint }) {
                   onChange={(event) => setPlates((current) => ({ ...current, [vehicle.id]: event.target.value.toUpperCase() }))}
                   className="h-10 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-sm uppercase outline-none placeholder:normal-case placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
                 />
-                <Button className="sm:min-w-36" disabled={plate.trim().length < 4 || isPrinting} onClick={() => print(vehicle)}>
-                  <Printer className={isPrinting ? 'animate-pulse' : ''} />
-                  {isPrinting ? 'Printing…' : 'Print ticket'}
-                </Button>
+                {!isConfirmed ? (
+                  <Button variant="destructive" className="sm:min-w-40"
+                    disabled={confirmingId === vehicle.id || (reviewMode && !isReviewVehicle)}
+                    onClick={() => confirm(vehicle)}>
+                    <AlertTriangle /> {confirmingId === vehicle.id ? 'Confirming…' : 'Confirm bad parking'}
+                  </Button>
+                ) : (
+                  <Button className="sm:min-w-36" disabled={plate.trim().length < 4 || isPrinting || isPrinted || (reviewMode && !isReviewVehicle)} onClick={() => print(vehicle)}>
+                    <Printer className={isPrinting ? 'animate-pulse' : ''} />
+                    {isPrinting ? 'Printing…' : isPrinted ? 'Ticket printed' : 'Print ticket'}
+                  </Button>
+                )}
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
                 {vehicle.plate && vehicle.plate_conf != null
                   ? `OCR read ${Math.round(vehicle.plate_conf * 100)}% confidence · verify before printing.`
                   : 'Plate not read clearly · enter or correct it before printing.'}
               </p>
+              {reviewMode && isReviewVehicle && reviewReady && (
+                <Button className="mt-3 w-full" onClick={onResume}>
+                  <Play /> Go ahead
+                </Button>
+              )}
             </div>
           )
         })}

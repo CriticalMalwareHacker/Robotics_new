@@ -101,7 +101,8 @@ class ArduinoSerialLink:
                 self._serial.write((command.strip() + "\n").encode("ascii"))
                 self._serial.flush()
                 reply = self._serial.readline().decode("ascii", "replace").strip()
-                if reply.startswith("OK") or reply in {"PONG", "STATUS IDLE", "STATUS ESTOP"}:
+                if (reply.startswith(("OK", "SENSORS ")) or
+                        reply in {"PONG", "STATUS IDLE", "STATUS MOVING", "STATUS ESTOP"}):
                     return True, reply
                 self._last_error = reply or "Arduino did not reply before timeout."
                 self._close_locked()

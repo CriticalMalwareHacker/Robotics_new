@@ -74,7 +74,10 @@ def _devices() -> dict:
     return {
         "camera": cam,
         "arduino": link,  # ok | offline | simulated
-        "ultrasonic": "offline",  # sensor arrives with the Arduino phase
+        "ultrasonic": ("ok" if _robot_state.get("ultrasonic_seen") else
+                       ("degraded" if link == "ok" else "offline")),
+        "ir": ("ok" if _robot_state.get("ir_seen") else
+               ("degraded" if link == "ok" else "offline")),
         "printer": printer,
         "backend": "ok",
     }
@@ -122,17 +125,31 @@ def hud_state():
     except Exception:
         pass
 
-    robot_state = "ESTOP" if _robot_state["estop"] else (
-        "PATROLLING" if _robot_state["mode"] == "auto"
-        else ("MONITORING" if m["monitor"] == "running" else "IDLE"))
+    robot_state = "ESTOP" if _robot_state["estop"] else {
+        "auto": "PATROLLING", "review": "PAUSED_REVIEW", "blocked": "BLOCKED"
+    }.get(_robot_state["mode"],
+          "MONITORING" if m["monitor"] == "running" else "IDLE")
 
     return {
         "frame": {"id": meta.get("id", 0), "width": meta.get("width", 0),
                   "height": meta.get("height", 0),
                   "available": meta.get("available", False),
                   "server_time": datetime.now().isoformat(timespec="seconds")},        "robot": {"state": robot_state, "mode": _robot_state["mode"],
-                  "link": _robot_link(), "distance_cm": None,
-                  "pose": None, "target": None,  # visual servo lands later
+                  "link": _robot_link(), "distance_cm": _robot_state.get("distance_cm"),
+                  "ir_blocked": _robot_state.get("ir_blocked"),
+                  "obstacle": ((_robot_state.get("ir_blocked") is True) or
+                               (_robot_state.get("distance_cm") is not None and
+                                _robot_state["distance_cm"] <= int(os.getenv("ROBOT_OBSTACLE_CM", "18")))),
+                  "review_vehicles": list(_robot_state.get("review_vehicles", [])),
+                  "review_confirmed": list(_robot_state.get("review_confirmed", [])),
+                  "review_ticketed": list(_robot_state.get("review_ticketed", [])),
+                  "review_ready": (bool(_robot_state.get("review_vehicles")) and
+                                   set(_robot_state.get("review_vehicles", [])).issubset(
+                                       _robot_state.get("review_confirmed", [])) and
+                                   set(_robot_state.get("review_vehicles", [])).issubset(
+                                       _robot_state.get("review_ticketed", []))),
+                  "last_error": _robot_state.get("last_error"),
+                  "pose": None, "target": None,
                   "estop": _robot_state["estop"]},
         "parking": {"slots": slots, "vehicles": vehicles,
                     "analyses": m.get("analyses_served", 0),
@@ -186,6 +203,17 @@ def ticket_violation(request: ViolationTicketRequest):
     if len(plate) < 4:
         raise HTTPException(status_code=422, detail="Enter a valid plate (at least 4 letters or digits).")
 
+    if _robot_state.get("mode") == "auto":
+        raise HTTPException(status_code=409,
+                            detail="Stop or pause the patrol before printing a violation ticket.")
+    if _robot_state.get("mode") == "review":
+        if request.vehicle_id not in _robot_state.get("review_vehicles", []):
+            raise HTTPException(status_code=409,
+                                detail="That vehicle is not part of the current patrol review.")
+        if request.vehicle_id not in _robot_state.get("review_confirmed", []):
+            raise HTTPException(status_code=409,
+                                detail="Confirm bad parking before printing this ticket.")
+
     current = monitor.status()
     analysis: ParkingAnalysis | None = current.get("last_analysis")
     det = next((d for d in current.get("last_detections", [])
@@ -212,6 +240,10 @@ def ticket_violation(request: ViolationTicketRequest):
               "vehicle": request.vehicle_id, "slot": result.slot_id or "Unknown",
               "violation": result.violation.value, "time": now.isoformat(timespec="seconds")}
     record_ticket(record)
+    if ok and _robot_state.get("mode") == "review" and request.vehicle_id in _robot_state.get("review_vehicles", []):
+        ticketed = _robot_state.setdefault("review_ticketed", [])
+        if request.vehicle_id not in ticketed:
+            ticketed.append(request.vehicle_id)
     events.log("info" if ok else "error",
                f"Ticket {number} printed for {plate}." if ok
                else f"Ticket {number} saved, but printer failed: {message}")

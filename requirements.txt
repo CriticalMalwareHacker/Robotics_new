@@ -27,6 +27,7 @@ Pillow>=10.0.0
 pyusb>=1.2.1
 opencv-python-headless>=4.8.0
 pyserial>=3.5
+gpiozero>=2.0
 
 # Offline plate-text OCR (small CPU ONNX models; initialized on first detection)
 rapidocr>=3.10,<4
