@@ -108,9 +108,29 @@ For a source build of lgpio, install prerequisites first: `sudo apt install -y p
 
 Pi hotspot profile is `printsensei-hotspot`; visible SSID is `PrintSensei`. The Pi AP has historically used `10.42.0.1/24`, with a Windows client example `10.42.0.25`. This hotspot provides local SSH/dashboard access but does not by itself give the Pi internet.
 
+### Turn the PrintSensei hotspot on/off
+
+Turn it on (activate its saved NetworkManager profile):
+
+```bash
+sudo nmcli connection up printsensei-hotspot
+nmcli connection show --active
+```
+
+Turn it off:
+
+```bash
+sudo nmcli connection down printsensei-hotspot
+nmcli connection show --active
+```
+
+**SSH warning:** if your laptop is connected to the Pi through the `PrintSensei` Wi-Fi, turning that connection off will drop the SSH session. First connect through another path or be prepared to reconnect after turning the hotspot back on. Use the Pi's local console if no other route is available.
+
+These commands activate/deactivate the saved profile; they do not delete it or erase its saved configuration.
+
 Pi internet was needed to pull from GitHub. Windows Internet Connection Sharing over USB Ethernet (`Ethernet 3`, gateway `192.168.137.1`) was attempted. The Pi obtained `192.168.137.2` and could ping the gateway but could not reach `1.1.1.1` or resolve `github.com`; ICS was not forwarding internet. Disconnecting Pi eth0 dropped SSH, and `ap.local` did not resolve, but the user recovered access.
 
-The working route was to connect Pi to the nearby phone hotspot saved as NetworkManager profile `Pranshu`; `git pull` then succeeded. The user confirmed the pull and wanted the project hotspot back. The command provided was:
+The working route was to connect Pi to the nearby phone hotspot saved as NetworkManager profile `Pranshu`; `git pull` then succeeded. The user confirmed the pull and wanted the project hotspot back. To switch to the phone Wi-Fi, deactivate the PrintSensei hotspot first, then activate `Pranshu`:
 
 ```bash
 sudo nmcli connection up printsensei-hotspot
@@ -124,7 +144,7 @@ sudo nmcli connection down printsensei-hotspot
 sudo nmcli connection up "Pranshu"
 ```
 
-Restore the project hotspot afterward:
+Restore the project hotspot afterward (this disconnects the phone Wi-Fi):
 
 ```bash
 sudo nmcli connection down "Pranshu"
