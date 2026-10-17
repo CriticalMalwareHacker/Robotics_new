@@ -2,10 +2,11 @@
 
 Detects:
 1. Dynamic parking bays formed by black marker lines drawn on a floor / mat.
-2. Rectangular colored cards and box cars placed as vehicles.
-3. Evaluates parking violations dynamically relative to detected lines:
+2. Rectangular colored cards (yellow, red, black, etc.) and box cars placed as vehicles.
+3. Tight perspective-accurate vehicle boundaries (quadrilaterals).
+4. Evaluates parking violations dynamically relative to detected lines:
    - STRADDLING: Vehicle overlaps or crosses a parking divider line into an adjacent bay.
-   - WRONG_ORIENTATION: Vehicle angle deviates from parking bay lines by > 20 deg.
+   - WRONG_ORIENTATION: Vehicle angle deviates from parking bay lines by > 25 deg.
    - OUTSIDE_SLOT: Vehicle is outside detected parking bays.
    - LEGAL: Vehicle is neatly parked inside a bay parallel to marker lines.
 """
@@ -23,8 +24,8 @@ from .models import Detection, ParkingAnalysis, Slot, SlotResult, ViolationType
 
 logger = logging.getLogger(__name__)
 
-# Orientation tolerance
-MAX_ANGLE_ERROR_DEG = 20.0
+# Orientation tolerance (accommodates perspective foreshortening in wide-angle views)
+MAX_ANGLE_ERROR_DEG = 25.0
 
 
 def _line_angle_deg(x1: float, y1: float, x2: float, y2: float) -> float:
@@ -52,13 +53,13 @@ def _extract_mat_mask(frame_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Isolate the white/bright parking surface mat (paper sheet or floor ROI).
     
     Returns (mat_mask, paper_mask) where mat_mask is the filled convex region of the
-    parking area, and paper_mask is the raw threshold mask for bright paper.
+    parking area, and paper_mask is the raw threshold mask for bright white paper.
     """
     fh, fw = frame_bgr.shape[:2]
     hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
 
-    # Detect white/light paper surface
-    paper_mask = cv2.inRange(hsv, (0, 0, 110), (180, 85, 255))
+    # Detect white/light paper surface (neutral white has very low saturation S <= 65)
+    paper_mask = cv2.inRange(hsv, (0, 0, 110), (180, 65, 255))
     cnts, _ = cv2.findContours(paper_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     mat_mask = np.zeros((fh, fw), dtype=np.uint8)
@@ -78,43 +79,82 @@ def _extract_mat_mask(frame_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return mat_mask, paper_mask
 
 
+def _order_quad_clockwise(pts: np.ndarray | Sequence[Sequence[float]]) -> np.ndarray:
+    """Order 4 polygon vertices in clockwise sequence around their centroid."""
+    arr = np.asarray(pts, dtype=np.float32).reshape(-1, 2)
+    if len(arr) < 3:
+        return arr
+    cx, cy = float(np.mean(arr[:, 0])), float(np.mean(arr[:, 1]))
+    angles = np.arctan2(arr[:, 1] - cy, arr[:, 0] - cx)
+    sort_idx = np.argsort(angles)
+    return arr[sort_idx]
+
+
+def extract_tight_card_polygon(cnt: np.ndarray) -> np.ndarray:
+    """Extract a perspective-accurate tight 4-corner polygon for a vehicle card.
+    
+    Handles perspective foreshortening (where cards on a table appear as trapezoids
+    rather than orthogonal rectangles), avoiding the oversized box artifacts of minAreaRect.
+    """
+    hull = cv2.convexHull(cnt)
+    hull_pts = hull.reshape(-1, 2)
+    if len(hull_pts) <= 4:
+        return _order_quad_clockwise(hull_pts)
+
+    peri = cv2.arcLength(hull, True)
+    hull_area = cv2.contourArea(hull)
+
+    # 1. Multi-scale polygon approximation to find exact 4 convex corners
+    for eps_factor in [0.03, 0.04, 0.05, 0.06, 0.02, 0.07]:
+        approx = cv2.approxPolyDP(hull, eps_factor * peri, True)
+        if len(approx) == 4 and cv2.isContourConvex(approx):
+            approx_area = cv2.contourArea(approx)
+            if approx_area >= 0.85 * hull_area:
+                return _order_quad_clockwise(approx.reshape(4, 2))
+
+    # 2. Fit 4 extreme vertices of the hull closest to the minAreaRect bounding corners
+    rect = cv2.minAreaRect(hull)
+    box = cv2.boxPoints(rect)
+    corners: list[np.ndarray] = []
+    used_indices: set[int] = set()
+
+    for b_pt in box:
+        dists = [math.hypot(hp[0] - b_pt[0], hp[1] - b_pt[1]) for hp in hull_pts]
+        sorted_indices = np.argsort(dists)
+        for idx in sorted_indices:
+            if idx not in used_indices:
+                used_indices.add(int(idx))
+                corners.append(hull_pts[idx])
+                break
+
+    if len(corners) == 4:
+        return _order_quad_clockwise(corners)
+    return _order_quad_clockwise(box)
+
+
 def detect_vehicle_cards(frame_bgr: np.ndarray) -> list[Detection]:
-    """Detect colored rectangular cards or box cars on the parking surface."""
+    """Detect colored rectangular cards (yellow, red, black, etc.) on the parking surface."""
     if frame_bgr is None or frame_bgr.size == 0:
         return []
 
     fh, fw = frame_bgr.shape[:2]
-    hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
     mat_mask, paper_mask = _extract_mat_mask(frame_bgr)
 
     min_card_area = fh * fw * 0.008
     max_card_area = fh * fw * 0.35
 
-    # 1. Non-white regions on the mat that survive opening (removes thin 2-6px marker lines)
+    # Non-white regions on the mat (yellow, red, black, blue, green)
     non_white = cv2.bitwise_and(cv2.bitwise_not(paper_mask), mat_mask)
-    open_k = max(7, int(min(fh, fw) * 0.025) | 1)
-    close_k = max(7, int(min(fh, fw) * 0.03) | 1)
-    cards_opened = cv2.morphologyEx(non_white, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (open_k, open_k)))
 
-    # 2. Saturated colored cards (red, blue, green, yellow, orange)
-    # Red wrap-around hue
-    red_mask = cv2.bitwise_or(
-        cv2.inRange(hsv, (0, 45, 40), (15, 255, 255)),
-        cv2.inRange(hsv, (160, 45, 40), (180, 255, 255))
+    # Morphological opening removes thin 2-6px marker lines while keeping cards solid
+    open_k = max(5, int(min(fh, fw) * 0.02) | 1)
+    cards_opened = cv2.morphologyEx(
+        non_white, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (open_k, open_k))
     )
-    # High-saturation other colors
-    sat_mask = cv2.inRange(hsv, (16, 45, 40), (159, 255, 255))
-    color_mask = cv2.bitwise_and(cv2.bitwise_or(red_mask, sat_mask), mat_mask)
-    color_opened = cv2.morphologyEx(color_mask, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (open_k, open_k)))
-    color_closed = cv2.morphologyEx(color_opened, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (close_k, close_k)))
 
-    # Combined candidate mask inside the mat
-    candidate_mask = cv2.bitwise_or(cards_opened, color_closed)
-    candidate_mask = cv2.bitwise_and(candidate_mask, mat_mask)
+    cnts, _ = cv2.findContours(cards_opened, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    cnts, _ = cv2.findContours(candidate_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    raw_candidates: list[tuple[float, float, tuple, np.ndarray, float]] = []
+    raw_candidates: list[tuple[float, float, np.ndarray, float]] = []
     for c in cnts:
         area = float(cv2.contourArea(c))
         if not (min_card_area <= area <= max_card_area):
@@ -134,21 +174,25 @@ def detect_vehicle_cards(frame_bgr: np.ndarray) -> list[Detection]:
         if not (1.05 <= aspect <= 4.5):
             continue
 
-        box = cv2.boxPoints(rect)
+        # Extract tight 4-corner perspective quad
+        poly = extract_tight_card_polygon(c)
+        if len(poly) < 4:
+            continue
 
-        # Calculate vehicle driving orientation in [0, 180)
-        # Choose the axis closest to vertical / perspective (typically 45-135 deg)
-        ang1 = float(math.degrees(math.atan2(box[1][1] - box[0][1], box[1][0] - box[0][0]))) % 180.0
-        ang2 = float(math.degrees(math.atan2(box[2][1] - box[1][1], box[2][0] - box[1][0]))) % 180.0
-        
-        diff1 = abs(ang1 - 90.0)
-        diff2 = abs(ang2 - 90.0)
-        best_ang = ang1 if diff1 <= diff2 else ang2
+        # Determine vehicle driving orientation (angle of side edges closer to vertical/perspective)
+        dx_side = (poly[2][0] - poly[1][0] + poly[3][0] - poly[0][0]) / 2.0
+        dy_side = (poly[2][1] - poly[1][1] + poly[3][1] - poly[0][1]) / 2.0
+        side_ang = float(math.degrees(math.atan2(dy_side, dx_side))) % 180.0
 
-        raw_candidates.append((cx, cy, rect, box, best_ang))
+        dx_top = (poly[1][0] - poly[0][0] + poly[2][0] - poly[3][0]) / 2.0
+        dy_top = (poly[1][0] - poly[0][0] + poly[2][1] - poly[3][1]) / 2.0
+        top_ang = float(math.degrees(math.atan2(dy_top, dx_top))) % 180.0
 
-    # Deduplicate overlapping detections (e.g. if color and dark contour both caught same card)
-    filtered: list[tuple[float, float, tuple, np.ndarray, float]] = []
+        best_ang = side_ang if abs(side_ang - 90.0) <= abs(top_ang - 90.0) else top_ang
+        raw_candidates.append((cx, cy, poly, best_ang))
+
+    # Deduplicate overlapping detections
+    filtered: list[tuple[float, float, np.ndarray, float]] = []
     for cand in raw_candidates:
         cx1, cy1 = cand[0], cand[1]
         dup = False
@@ -164,9 +208,9 @@ def detect_vehicle_cards(frame_bgr: np.ndarray) -> list[Detection]:
     filtered.sort(key=lambda c: c[0])
 
     detections: list[Detection] = []
-    for i, (cx, cy, rect, box, ang) in enumerate(filtered, start=1):
-        poly_list = [[round(float(p[0]), 1), round(float(p[1]), 1)] for p in box]
-        poly_px = [[int(round(p[0])), int(round(p[1]))] for p in box]
+    for i, (cx, cy, poly, ang) in enumerate(filtered, start=1):
+        poly_list = [[round(float(p[0]), 1), round(float(p[1]), 1)] for p in poly]
+        poly_px = [[int(round(p[0])), int(round(p[1]))] for p in poly]
 
         detections.append(
             Detection(
@@ -197,7 +241,7 @@ def detect_marker_lines_and_bays(frame_bgr: np.ndarray) -> tuple[list[Slot], lis
         cv2.fillPoly(cards_mask, [pts], 255)
 
     # Dilate card masks slightly so card edges don't get detected as lines
-    dil_k = max(5, int(min(fh, fw) * 0.015) | 1)
+    dil_k = max(7, int(min(fh, fw) * 0.02) | 1)
     cards_dilated = cv2.dilate(cards_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (dil_k, dil_k)))
     mat_inner = cv2.erode(mat_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (6, 6)))
 
@@ -384,7 +428,6 @@ def analyze_dynamic_parking(
             # Check internal divider lines (exclude outermost borders)
             internal_lines = lines[1:-1] if len(lines) > 2 else lines
             for lx1, ly1, lx2, ly2 in internal_lines:
-                # Vertical overlap check
                 l_min_y = min(ly1, ly2)
                 l_max_y = max(ly1, ly2)
                 if car_max_y < l_min_y or car_min_y > l_max_y:
@@ -431,19 +474,9 @@ def analyze_dynamic_parking(
             continue
 
         # Check vehicle driving orientation alignment with the parking bay
-        # Check both bounding box axes (long and short) against the bay angle
-        pts = vehicle.polygon
-        ax1_ang = _line_angle_deg(pts[0][0], pts[0][1], pts[1][0], pts[1][1])
-        ax2_ang = _line_angle_deg(pts[1][0], pts[1][1], pts[2][0], pts[2][1])
-
-        d1 = abs(ax1_ang - best_bay.angle_deg) % 180.0
-        if d1 > 90.0:
-            d1 = 180.0 - d1
-        d2 = abs(ax2_ang - best_bay.angle_deg) % 180.0
-        if d2 > 90.0:
-            d2 = 180.0 - d2
-
-        d_ang = min(d1, d2)
+        d_ang = abs(vehicle.angle_deg - best_bay.angle_deg) % 180.0
+        if d_ang > 90.0:
+            d_ang = 180.0 - d_ang
 
         if d_ang > MAX_ANGLE_ERROR_DEG:
             results.append(
