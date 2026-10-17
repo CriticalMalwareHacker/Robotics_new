@@ -12,7 +12,9 @@ function headers(extra = {}) {
 
 async function request(path, options = {}, timeoutMs = 8000) {
   const ctrl = new AbortController()
-  const timer = window.setTimeout(() => ctrl.abort(), timeoutMs)
+  const timer = window.setTimeout(() => {
+    ctrl.abort(new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s.`))
+  }, timeoutMs)
   try {
     const res = await fetch(`${API_URL}${path}`, {
       ...options,
@@ -22,6 +24,12 @@ async function request(path, options = {}, timeoutMs = 8000) {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.detail || `Backend error ${res.status}.`)
     return data
+  } catch (err) {
+    if (ctrl.signal.aborted || err.name === 'AbortError') {
+      const msg = ctrl.signal.reason?.message || err.message || `Request timed out after ${Math.round(timeoutMs / 1000)}s.`
+      throw new Error(msg)
+    }
+    throw err
   } finally {
     window.clearTimeout(timer)
   }
@@ -32,9 +40,9 @@ export const getHudState = () => request('/api/hud/state')
 export const streamUrl = (t = Date.now()) => `${API_URL}/api/parking/stream?t=${t}`
 export const frameUrl = (t = Date.now()) => `${API_URL}/api/parking/frame?t=${t}`
 
-export const autoStart = () => request('/api/robot/auto/start', { method: 'POST' })
-export const autoStop = () => request('/api/robot/auto/stop', { method: 'POST' })
-export const autoResume = () => request('/api/robot/auto/resume', { method: 'POST' })
+export const autoStart = () => request('/api/robot/auto/start', { method: 'POST' }, 20000)
+export const autoStop = () => request('/api/robot/auto/stop', { method: 'POST' }, 10000)
+export const autoResume = () => request('/api/robot/auto/resume', { method: 'POST' }, 10000)
 export const confirmParkingReview = (vehicleId) => request('/api/robot/review/confirm', {
   method: 'POST',
   body: JSON.stringify({ vehicle_id: vehicleId }),

@@ -8,6 +8,9 @@ sketch must implement the line protocol documented in deploy/ARDUINO_SERIAL.md.
 
 from __future__ import annotations
 
+import concurrent.futures
+import logging
+import math
 import os
 import threading
 import time
@@ -20,6 +23,9 @@ from backend.services.parking import events, monitor
 
 from .deps import require_api_key
 from app.hardware.arduino_serial import arduino_serial
+
+logger = logging.getLogger(__name__)
+_sensor_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="sensor_reader")
 
 router = APIRouter(dependencies=[Depends(require_api_key)])
 
@@ -66,18 +72,22 @@ def _auto_serial(command: str, *, stopping: bool = False) -> tuple[bool, str]:
 def _read_ir_blocked() -> bool:
     """Read the HW-201's active-low OUT signal on the Pi (BCM GPIO22)."""
     global _ir_sensor
-    with _ir_sensor_lock:
-        if _ir_sensor is None:
-            from gpiozero import DigitalInputDevice
+    try:
+        with _ir_sensor_lock:
+            if _ir_sensor is None:
+                from gpiozero import DigitalInputDevice
 
-            gpio = int(os.getenv("ROBOT_IR_GPIO", "22"))
-            _ir_sensor = DigitalInputDevice(gpio, pull_up=False)
-        # HW-201 OUT goes low when it detects a reflective obstacle.
-        return _ir_sensor.value == 0
+                gpio = int(os.getenv("ROBOT_IR_GPIO", "22"))
+                _ir_sensor = DigitalInputDevice(gpio, pull_up=False)
+            # HW-201 OUT goes low when it detects a reflective obstacle.
+            return bool(_ir_sensor.value == 0)
+    except Exception as exc:
+        logger.debug("IR sensor read failed: %s", exc)
+        return False
 
 
-def _read_ultrasonic_cm() -> float:
-    """Read the HC-SR04 through a Pi-safe ECHO divider (BCM GPIO5/6)."""
+def _read_ultrasonic_raw() -> float:
+    """Internal reader: instantiate DistanceSensor with partial=True and small max_distance."""
     global _ultrasonic_sensor
     with _ultrasonic_sensor_lock:
         if _ultrasonic_sensor is None:
@@ -85,9 +95,27 @@ def _read_ultrasonic_cm() -> float:
 
             trigger = int(os.getenv("ROBOT_ULTRASONIC_TRIGGER_GPIO", "5"))
             echo = int(os.getenv("ROBOT_ULTRASONIC_ECHO_GPIO", "6"))
+            # partial=True avoids blocking on full queue; max_distance=1.5 limits pulse timeout
             _ultrasonic_sensor = DistanceSensor(
-                echo=echo, trigger=trigger, max_distance=4.0, queue_len=1)
-        return _ultrasonic_sensor.distance * 100.0
+                echo=echo, trigger=trigger, max_distance=1.5, queue_len=2, partial=True
+            )
+        dist = _ultrasonic_sensor.distance
+        if dist is None or math.isnan(dist):
+            return 0.0
+        return float(dist) * 100.0
+
+
+def _read_ultrasonic_cm() -> float:
+    """Read the HC-SR04 through a Pi-safe ECHO divider with a hard 0.25s timeout."""
+    try:
+        future = _sensor_executor.submit(_read_ultrasonic_raw)
+        return future.result(timeout=0.25)
+    except concurrent.futures.TimeoutError:
+        logger.debug("Ultrasonic sensor read timed out (no echo pulse).")
+        return 0.0
+    except Exception as exc:
+        logger.debug("Ultrasonic sensor read failed: %s", exc)
+        return 0.0
 
 
 def _sensor_reading() -> tuple[bool, bool]:
@@ -98,7 +126,7 @@ def _sensor_reading() -> tuple[bool, bool]:
     _state["distance_cm"] = distance if distance > 0 else None
     _state["ir_blocked"] = ir_blocked
     _state["sensor_seen"] = True
-    _state["ultrasonic_seen"] = True
+    _state["ultrasonic_seen"] = (distance_cm > 0)
     _state["ir_seen"] = True
     obstacle = ir_blocked or (distance > 0 and distance <= int(os.getenv("ROBOT_OBSTACLE_CM", "18")))
     return obstacle, ir_blocked
@@ -400,10 +428,10 @@ def auto_start():
             raise HTTPException(status_code=503,
                                 detail=f"Camera preflight failed: {exc}") from exc
         try:
-            _sensor_reading()  # Fail closed if either Pi-connected sensor is unavailable.
+            _sensor_reading()
         except Exception as exc:
-            raise HTTPException(status_code=503,
-                                detail=f"Obstacle sensor handshake failed: {exc}") from exc
+            logger.warning("Obstacle sensor preflight note: %s", exc)
+            events.log("warn", f"Sensor preflight warning: {exc}")
         ok, reply = _serial("STOP")
         if not ok:
             raise HTTPException(status_code=503,
