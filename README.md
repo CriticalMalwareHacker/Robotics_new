@@ -20,22 +20,27 @@ The system pairs a **Raspberry Pi 5** (hosting computer vision, plate OCR, and a
 
 ## Key Features
 
-1. **Computer Vision Parking Inspection:**
-   - Real-world metric planar homography mapping a $60 \times 45\text{ cm}$ parking area directly to camera pixel coordinates.
-   - Real-time vehicle detection and bounding geometry classification.
-   - Categorizes parking states into: `LEGAL`, `OUTSIDE_SLOT`, `STRADDLING`, `WRONG_ORIENTATION`, and `NO_PARKING_ZONE`.
+1. **Dynamic Computer Vision Parking Inspection:**
+   - **Dynamic Marker Line Detection:** Automatically identifies drawn black divider lines and synthesizes $N$ dynamic parking bays (`BAY-1`, `BAY-2`, `BAY-3`...) without hardcoded coordinates.
+   - **Multi-Color Vehicle Card Detection:** Accurately isolates red, yellow, black, and other colored vehicles on the parking mat.
+   - **Tight Perspective Quadrilateral Fitting:** Uses multi-scale polygon approximation on convex hulls to hug trapezoidal perspective boundaries tightly with zero excess padding.
+   - **Independent Contour Processing:** Prevents adjacent vehicles in neighboring bays from merging across divider lines.
+   - Categorizes parking states into: `LEGAL`, `STRADDLING` (line crossing), `WRONG_ORIENTATION` (relative to bay axis), and `OUTSIDE_SLOT`.
 2. **Offline License Plate Recognition (OCR):**
-   - On-device CPU inference using **RapidOCR** (ONNX Runtime) to extract vehicle registration numbers.
+   - On-device CPU inference using **RapidOCR** (ONNX Runtime) to extract handwritten and printed vehicle registration numbers (e.g. `MH47AX5364`).
 3. **Physical Thermal Citation Issuance:**
    - Onboard **58 mm Thermal Receipt Printer** (ESC/POS protocol, 384 dots/line).
    - Generates high-contrast monochrome violation notices complete with date, time, vehicle ID, plate number, bay ID, and violation reason.
 4. **Autonomous Patrol & Smart Obstacle Avoidance:**
    - Multi-sensor safety stack: **HC-SR04 ultrasonic rangefinder** and **HW-201 active-low IR proximity sensor**.
-   - Automatic reverse-before-turn clearance to prevent chassis scraping.
-   - Persistent obstacle avoidance maneuvers and auto-stop fail-safe.
-5. **Interactive Web Heads-Up Display (HUD):**
-   - Self-hosted on the Raspberry Pi local network (`10.42.0.1`).
-   - Live camera stream with vector bounding polygon overlays, telemetry gauges, manual teleoperation controls, review verification gate, and emergency stop banner.
+   - **Non-blocking sensor executor:** 0.25s hard timeout ensures degraded/unconnected sensors never block the application or cause timeouts.
+   - Automatic reverse-before-turn clearance (`MOVE B 250ms`) to prevent chassis scraping, followed by timed escape pivots.
+5. **Human-in-the-Loop Verification Gate:**
+   - Robot halts patrol automatically upon detecting violations.
+   - Interactive modal pops up on the mobile HUD allowing operator verification, license plate editing/correction, citation printing, or dismissal.
+6. **Mobile-First Cyber-Tactical Heads-Up Display (HUD):**
+   - Self-hosted on the Raspberry Pi local network (`10.42.0.1:8000/hud`).
+   - Live video stream with dynamic vector polygon overlays, telemetry health badges, touch D-pad manual steering, and instantaneous emergency stop.
 
 ---
 
@@ -43,8 +48,8 @@ The system pairs a **Raspberry Pi 5** (hosting computer vision, plate OCR, and a
 
 ```
                        ┌──────────────────────────────────────────────┐
-                       │           React + Vite Frontend              │
-                       │   (/hud, /history, Live SVG Overlays)        │
+                       │      Mobile-First React + Vite HUD           │
+                       │ (/hud, /history, Live SVG Overlays, D-Pad)   │
                        └──────────────────────┬───────────────────────┘
                                               │ HTTP / SSE / Stream
                                               ▼
@@ -53,11 +58,11 @@ The system pairs a **Raspberry Pi 5** (hosting computer vision, plate OCR, and a
 │  FastAPI Backend (app/main.py)                                                              │
 │                                                                                             │
 │  ┌───────────────────────┐   ┌───────────────────────────────┐   ┌────────────────────────┐ │
-│  │ Vision & Parking Core │   │   Autonomous Patrol Manager   │   │   Ticket & Thermal     │ │
+│  │ Dynamic Vision Core   │   │   Autonomous Patrol Manager   │   │   Ticket & Thermal     │ │
 │  │ (backend/services/    │   │   (app/api/robot_routes.py)   │   │   Printer Service      │ │
 │  │   parking/)           │   │                               │   │   (384 px ESC/POS)     │ │
-│  │ - Color/Blob Detector │   │ - State Machine (Auto/Review) │   │ - Pillow Layout        │ │
-│  │ - Homography (slots)  │   │ - Obstacle Avoidance (L/R)    │   │ - USB/BT /dev/usb/lp0  │ │
+│  │ - Dynamic Line & Bay  │   │ - State Machine (Auto/Review) │   │ - Pillow Raster Layout │ │
+│  │ - Tight Quad Fitting  │   │ - Non-blocking Sensor Reader  │   │ - USB/BT /dev/usb/lp0  │ │
 │  │ - RapidOCR ONNX Plate │   │ - Safety Timeout Leases       │   └───────────┬────────────┘ │
 │  └───────────▲───────────┘   └──────────────┬────────────────┘               │              │
 │              │                              │                                │              │
@@ -113,13 +118,12 @@ STATUS                       -> STATUS IDLE|MOVING|ESTOP
 
 ## Parking Violation Rules & Classification
 
-Vehicles detected by the OpenCV vision pipeline are mapped through the calibration homography and classified against slot definitions in `backend/services/parking/config/slots.json`:
+Vehicles detected by the OpenCV vision pipeline are dynamically analyzed against synthesized parking bays:
 
-1. **`NO_PARKING_ZONE`:** Vehicle overlaps by $\ge 10\%$ with a designated restricted / no-parking zone.
-2. **`STRADDLING`:** Vehicle occupies $\ge 15\%$ across two different parking bays.
-3. **`OUTSIDE_SLOT`:** Overlap with the nearest parking bay is $< 80\%$.
-4. **`WRONG_ORIENTATION`:** Vehicle is within the slot ($\ge 80\%$), but its heading angle differs by $> 25^\circ$ from the bay's axis.
-5. **`LEGAL`:** Vehicle is properly centered and aligned inside an authorized bay.
+1. **`STRADDLING`:** Vehicle polygon crosses any interior divider marker line between bays or overlaps multiple bays simultaneously.
+2. **`WRONG_ORIENTATION`:** Vehicle driving axis deviates by $> 25^\circ$ from the target parking bay's orientation vector.
+3. **`OUTSIDE_SLOT`:** Vehicle centroid or significant area lies outside designated parking bays.
+4. **`LEGAL`:** Vehicle is properly bounded and aligned inside a single parking bay.
 
 ---
 
@@ -130,7 +134,7 @@ Robotics_new/
 ├── app/
 │   ├── main.py                     # FastAPI application setup and routing
 │   ├── api/
-│   │   ├── robot_routes.py         # Autonomous patrol loop, manual drive, E-stop, review endpoints
+│   │   ├── robot_routes.py         # Autonomous patrol loop, non-blocking sensors, drive, review endpoints
 │   │   ├── parking_routes.py       # Parking monitor, MJPEG camera stream, and frame endpoints
 │   │   └── hud_routes.py           # Unified HUD telemetry endpoint & ticket printing
 │   ├── hardware/
@@ -143,22 +147,25 @@ Robotics_new/
 │       └── park_sensei_serial.ino  # Motor Shield firmware with safety leases
 ├── backend/
 │   └── services/parking/
-│       ├── vehicle_detector.py     # Classical HSV segmentation & contour detection
-│       ├── parking_geometry.py     # Planar geometry, polygon intersection, violation debouncing
+│       ├── dynamic_detector.py     # Marker line & bay detector, tight perspective quads, relative violations
+│       ├── vehicle_detector.py     # Classical fallback detector
+│       ├── parking_geometry.py     # Geometry helpers & temporal violation debouncer
 │       ├── analyzer.py             # Matches detected vehicles to slot polygons
 │       ├── plate_reader.py         # RapidOCR license plate reader
 │       ├── ticket.py               # 384 px thermal citation raster layout & history
-│       └── config/slots.json       # Tabletop metric calibration & slot polygons
+│       └── monitor.py              # Vision monitor loop (dynamic -> classical fallback)
 ├── frontend/                       # React 18 + Vite HUD Dashboard
 │   ├── src/
 │   │   ├── App.jsx                 # Portal navigation & ticket history
 │   │   └── hud/
 │   │       ├── HudPage.jsx         # Main robot operator interface
-│   │       └── components/         # Telemetry badges, video stream overlay, controls
+│   │       ├── api.js              # Typed HTTP client with safe timeout & abort handling
+│   │       └── components/         # ReviewModal, ControlsBar, ManualDriveSheet, CameraFeed, TopBar
 ├── deploy/                         # Systemd service, serial docs, hotspot setup
 ├── docs/
 │   ├── PARK_SENSEI_GUIDE.md        # Comprehensive system guide and handoff notes
-│   └── PARK_SENSEI_ES_MINI_PROJECT_REPORT.md # Academic embedded systems report
+│   ├── PARK_SENSEI_ES_MINI_PROJECT_REPORT.md # Academic embedded systems report
+│   └── VISION_NOTES.md             # Vision pipeline analysis and trade-offs
 ├── update.sh                       # One-command Pi updater with fail-safe Wi-Fi hopping
 └── requirements.txt                # Python dependencies
 ```

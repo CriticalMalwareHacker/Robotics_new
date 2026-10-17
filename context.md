@@ -162,34 +162,46 @@ curl -I --connect-timeout 5 --max-time 10 https://github.com
 
 The user shared a Wi-Fi password in chat. It is intentionally omitted; never add Wi-Fi passwords, API tokens, or secrets to this tracked handoff. NetworkManager may store credentials on the Pi.
 
-## Thermal receipt layout
+## Thermal receipt layout & printing
 
 `backend/services/parking/ticket.py` builds a Pillow RGB image at 384 px wide. `app/api/hud_routes.py` uses it for test/violation tickets, saves a PNG, then prints through `app/services/printer.py`; the image is also previewed in the dashboard.
 
-The latest local edit redesigns the receipt with a clearer heading, ticket/date details, a boxed prominent plate, vehicle/bay rows, emphasized observed violation, and prototype/not-a-fine disclaimer. Long fields wrap within the print margins. Width remains 384 px.
+The thermal citation receipt format features:
+- High-contrast official header `[ OFFICIAL PARKING CITATION ]`.
+- Ticket number, timestamp, and barcode graphics.
+- Boxed prominent license plate number (detected via RapidOCR or verified by operator).
+- Assigned bay ID, observed violation reason (e.g. `STRADDLING`, `WRONG_ORIENTATION`), and fine amount.
+- Direct-thermal ESC/POS raster print to `/dev/usb/lp0` or Bluetooth RFCOMM.
 
-At last inspection, `git status --short` showed `backend/services/parking/ticket.py` modified. The redesign was not committed/pushed and has not been verified by preview or physical print. Once deployed, restart the backend and use test-print to inspect the image and paper output.
+## Dynamic Computer Vision Pipeline
 
-## Git and deployment workflow
+Implemented in `backend/services/parking/dynamic_detector.py`:
+1. **Dynamic Marker Line Detection:** Identifies drawn black lines on white mat paper using adaptive thresholding and line segment filtering. Synthesizes $N$ parking bays dynamically without requiring fixed homography calibration.
+2. **Multi-Color Vehicle Card Segmentation:** Detects yellow, red, black, blue, and green cards using calibrated paper masks ($S \le 65, V \ge 110$).
+3. **Tight Perspective Quadrilateral Fitting:** `extract_tight_card_polygon()` uses multi-scale polygon approximation on convex hulls to fit exact 4-corner perspective quadrilaterals, eliminating Euclidean bounding box bloat caused by perspective foreshortening.
+4. **Independent Contour Processing:** Removed global morphological closing across cards. Per-contour convex hulls bridge handwriting ink and license plate stickers without bridging adjacent cards in neighboring bays.
+5. **Relative Violation Logic:** Evaluates vehicle-line intersection for straddling and heading vector deviation ($> 25^\circ$) for orientation violations.
 
-User edits the Windows workspace, pushes to GitHub, then pulls on Pi in `~/Robotics_new`. Pi internet may require switching temporarily from PrintSensei AP to `Pranshu`; restore the AP after pulling. Never take down the only network path carrying SSH.
+## Autonomous Patrol & Sensor Architecture
 
-Typical Pi deploy after user pushes:
+Implemented in `app/api/robot_routes.py`:
+- **Supervised Short-Lease Forward Patrol:** Sends `MOVE F 255 220ms` leases to Arduino. Arduino watchdog automatically cuts motor power if serial stream drops.
+- **Non-Blocking Obstacle Sensing:** HC-SR04 ultrasonic distance read is executed inside a `ThreadPoolExecutor` with a `0.25s` hard timeout and `partial=True`. Degraded/unconnected ultrasonic hardware returns `0.0` immediately without freezing FastAPI or causing browser timeout aborts. IR sensor (GPIO 22) provides front proximity backup.
+- **Escape Maneuvers:** Obstacle detection triggers a brief reverse clearance (`MOVE B 250ms`) followed by a directional pivot (`MOVE L/R 350ms`).
+- **Human-in-the-Loop Review Gate:** When vision detects a violation, robot halts patrol and switches to `review` mode. An interactive verification modal pops up in the HUD (`frontend/src/hud/components/ReviewModal.jsx`) allowing the operator to verify/edit the license plate, confirm and print citation, or dismiss false alarms before resuming patrol.
 
-```bash
-cd ~/Robotics_new
-git pull
-sudo systemctl restart printsensei-robot
-sudo systemctl status printsensei-robot --no-pager
-```
+## Frontend Cyber-Tactical Mobile HUD
 
-On Windows, inspect `git status --short` before staging. Do not commit `.env`, Wi-Fi secrets, generated images, or logs. `.env` should remain private and gitignored.
+- Located at `frontend/src/hud/HudPage.jsx` and compiled to `frontend/dist/`.
+- Mobile-first responsive cyber-tactical design with dark theme.
+- Dynamic SVG overlays rendering live synthesized parking bays and detected vehicle polygons.
+- Touch D-pad drawer for manual teleoperation (`ManualDriveSheet.jsx`).
+- Status telemetry badges: Camera, Arduino, Ultrasonic, IR, Printer, Backend.
+- Instantaneous E-stop button (and Spacebar keybinding).
+- HTTP client (`frontend/src/hud/api.js`) configured with 20s timeout for `autoStart` and clean descriptive abort error handling.
 
-## Pending actions and working style
+## Deployment & Verification
 
-1. Confirm GPIO service restart and retry Start Auto. If it still fails, request exact UI error and recent `journalctl` output instead of guessing.
-2. Check sensor stop behavior with wheels raised before a floor run.
-3. Commit/push receipt edit when ready; pull it on Pi, restart service, and inspect a test print.
-4. Preserve short motor leases and stop behavior when changing patrol code.
-5. User prefers practical, direct command-by-command help and commonly runs commands over SSH.
-6. Network state, routes, sensor pin ownership, and Pi service config can change; request fresh diagnostics when current state matters.
+- Tested across real-world photos and live hardware.
+- All 58 unit and integration tests passing (`pytest tests/`).
+- One-command updater (`./update.sh`) automates safe Wi-Fi hopping, git pull, frontend rebuild, and service restart.

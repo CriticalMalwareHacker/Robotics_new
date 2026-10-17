@@ -6,9 +6,11 @@ Source-of-truth order: current source and Pi .env > focused current docs > this 
 
 ## 1. What ParkSensei is
 
-ParkSensei is a local-network parking-monitoring and supervised robot-patrol demo. Raspberry Pi 5 hosts a FastAPI backend and React dashboard. A USB camera watches a tabletop mat with paper/toy cars. Classical OpenCV detects cars and compares position/orientation with configured parking spaces. Dashboard shows live image, overlays, parking state, hardware status, robot controls and ticket history. Operator can drive manually or start supervised auto. A persistent violation pauses patrol for human review; operator confirms, verifies/enters plate, and prints a demo notice. Arduino Uno plus Adafruit Motor Shield V1 drives four motors. IR and HC-SR04 obstacle sensors connect directly to Pi GPIO.
+ParkSensei is a local-network smart parking-monitoring and supervised robot-patrol system. A Raspberry Pi 5 hosts a FastAPI backend, RapidOCR license plate recognition engine, and a React mobile-first HUD. A USB camera watches a tabletop parking mat. The **Dynamic Computer Vision Pipeline** automatically detects drawn black divider lines to synthesize $N$ parking bays on the fly, isolates multi-colored vehicle cards (yellow, red, black, etc.), and fits tight 4-point perspective quadrilaterals without Euclidean bounding box bloat.
 
-Typical demo: camera monitors calibrated mat -> operator sees legal/violation results -> starts auto after checking clear path -> Pi reads sensors and sends short motor leases to Arduino -> stop/attempt timed pivot at obstacle -> pause for human review on persistent parking violation -> operator confirms, prints demo ticket, and resumes.
+The mobile HUD (`10.42.0.1:8000/hud`) shows live camera video, dynamic SVG polygon overlays, parking state, hardware status badges, touch manual drive controls, and ticket history. The operator can teleoperate manually via touch D-pad or start supervised auto patrol. When the robot detects a parking violation (e.g. straddling a bay line or angled parking), patrol halts automatically and an interactive **Verification Gate Modal** appears on the operator's screen. The operator can confirm/edit the OCR plate number, print a formal thermal citation via the onboard 58 mm printer, or dismiss false alarms before resuming patrol. An Arduino Uno plus Adafruit Motor Shield V1 drives the 4WD skid-steer chassis via safety-leased commands. Front IR and HC-SR04 ultrasonic obstacle sensors connect directly to Pi GPIO with non-blocking timeout protection.
+
+Typical demo: camera dynamically detects marker bays and cards -> operator starts auto patrol -> Pi checks sensors and sends short forward leases to Arduino -> stop/attempt timed pivot at obstacles -> auto-halt and pop up verification gate upon parking violation -> operator verifies plate and prints thermal citation -> operator resumes patrol.
 
 This is a supervised tabletop proof-of-concept. It is not public-road, production parking, enforcement, mapping, or safety-certified autonomous vehicle software. Do not claim it navigates real parking lots independently.
 
@@ -17,29 +19,30 @@ This is a supervised tabletop proof-of-concept. It is not public-road, productio
 | Path | Responsibility |
 | --- | --- |
 | app/main.py | FastAPI setup, router registration, CORS, generated-file mounts, optional frontend/dist serving. |
-| app/api/robot_routes.py | Robot states, Pi GPIO sensors, manual/auto, E-stop and review gate. |
+| app/api/robot_routes.py | Robot states, non-blocking Pi GPIO sensors, manual/auto, E-stop and review gate. |
 | app/api/parking_routes.py | Parking APIs, monitor start/stop, annotated frame and MJPEG stream. |
 | app/api/hud_routes.py | Composite HUD data, device status, test-print/history/violation ticket. |
 | app/api/deps.py | Optional Bearer API key check. |
 | app/hardware/arduino_serial.py | Uno serial discovery, handshake and command transport. |
 | arduino/park_sensei_serial/park_sensei_serial.ino | Uno + Motor Shield V1 firmware. |
 | app/services/camera.py | OpenCV camera manager and cached frames. |
-| backend/services/parking/monitor.py | Detect -> analyze -> debounce loop. |
-| backend/services/parking/vehicle_detector.py | Classical red/dark paper-car segmentation. |
+| backend/services/parking/dynamic_detector.py | Dynamic marker line & bay detector, tight perspective quads, relative violations. |
+| backend/services/parking/monitor.py | Dynamic CV monitor loop with classical fallback. |
+| backend/services/parking/vehicle_detector.py | Classical red/dark paper-car segmentation fallback. |
 | backend/services/parking/parking_geometry.py | Polygon overlap, angle rules and debounce. |
 | backend/services/parking/analyzer.py | Combines detections and parking slots. |
-| backend/services/parking/plate_reader.py | Optional local RapidOCR plate hint. |
-| backend/services/parking/config/slots.json | Camera/mat calibration, homography and slots. |
-| backend/services/parking/config/plates.json | Fictional demo plate fixture, not a registry. |
-| backend/services/parking/annotator.py | Server-side drawing onto parking frame. |
-| backend/services/parking/ticket.py | Ticket image, ID, PNG and JSON history. |
+| backend/services/parking/plate_reader.py | RapidOCR ONNX plate recognition on rectified vehicle crops. |
+| backend/services/parking/config/slots.json | Tabletop metric calibration & fallback slot definitions. |
+| backend/services/parking/ticket.py | Ticket image layout, barcode, PNG and JSON history. |
 | app/services/printer.py | 58 mm raster and USB/CUPS/Bluetooth ESC/POS output. |
 | frontend/src/App.jsx | ParkSensei home and ticket history. |
-| frontend/src/hud/HudPage.jsx | Main robot/parking HUD. |
-| frontend/src/hud/components/ | HUD display and controls. |
-| frontend/src/hud/api.js | HUD HTTP client. |
+| frontend/src/hud/HudPage.jsx | Main mobile-first robot/parking HUD. |
+| frontend/src/hud/components/ReviewModal.jsx | Operator verification gate modal for violation approval & plate edit. |
+| frontend/src/hud/components/ManualDriveSheet.jsx | Touch D-pad manual teleoperation drawer. |
+| frontend/src/hud/components/ControlsBar.jsx | Floating tactical bottom dock with auto/stop/estop controls. |
+| frontend/src/hud/api.js | HUD HTTP client with safe 20s auto timeout and descriptive abort handling. |
 | deploy/ARDUINO_SERIAL.md | Wiring, Uno commands and test notes. |
-| context.md | Prior hardware/network history and hotspot commands. |
+| context.md | Hardware/network history, updater documentation, and current status. |
 
 Repo originated as PrintSensei, an AI label/diagram/voice/printing assistant. Old renderer, AI providers, speech, simulator, display/LCD, legacy endpoints and RoboticsPanel.jsx remain. Active React routes are /, /hud and /history. Do not remove legacy modules without reference/dependency review. Branding is partly migrated: home/history say ParkSensei, while HUD header/title, APP_NAME default, startup log and service filename still say PrintSensei.
 
