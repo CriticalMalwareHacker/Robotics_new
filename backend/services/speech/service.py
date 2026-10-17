@@ -3,11 +3,16 @@
 from functools import lru_cache
 from pathlib import Path
 
-from faster_whisper import WhisperModel
+try:
+    from faster_whisper import WhisperModel
+except ImportError:
+    WhisperModel = None
 
 
 class SpeechToTextService:
     def __init__(self) -> None:
+        if WhisperModel is None:
+            raise RuntimeError("faster-whisper is not installed.")
         # int8 is substantially faster and lighter on CPU/Raspberry Pi hardware.
         self.model = WhisperModel("tiny", device="cpu", compute_type="int8")
 

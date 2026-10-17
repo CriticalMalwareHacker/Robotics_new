@@ -39,6 +39,10 @@ export const confirmParkingReview = (vehicleId) => request('/api/robot/review/co
   method: 'POST',
   body: JSON.stringify({ vehicle_id: vehicleId }),
 })
+export const dismissParkingReview = (vehicleId) => request('/api/robot/review/dismiss', {
+  method: 'POST',
+  body: JSON.stringify({ vehicle_id: vehicleId }),
+})
 export const estop = () => request('/api/robot/estop', { method: 'POST' })
 export const estopClear = () => request('/api/robot/estop/clear', { method: 'POST' })
 export const drive = (command, speed, durationMs) =>

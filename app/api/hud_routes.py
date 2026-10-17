@@ -143,11 +143,12 @@ def hud_state():
                   "review_vehicles": list(_robot_state.get("review_vehicles", [])),
                   "review_confirmed": list(_robot_state.get("review_confirmed", [])),
                   "review_ticketed": list(_robot_state.get("review_ticketed", [])),
+                  "review_dismissed": list(_robot_state.get("review_dismissed", [])),
                   "review_ready": (bool(_robot_state.get("review_vehicles")) and
                                    set(_robot_state.get("review_vehicles", [])).issubset(
-                                       _robot_state.get("review_confirmed", [])) and
+                                       set(_robot_state.get("review_confirmed", [])) | set(_robot_state.get("review_dismissed", []))) and
                                    set(_robot_state.get("review_vehicles", [])).issubset(
-                                       _robot_state.get("review_ticketed", []))),
+                                       set(_robot_state.get("review_ticketed", [])) | set(_robot_state.get("review_dismissed", [])))),
                   "last_error": _robot_state.get("last_error"),
                   "pose": None, "target": None,
                   "estop": _robot_state["estop"]},

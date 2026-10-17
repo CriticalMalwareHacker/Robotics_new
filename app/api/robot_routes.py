@@ -36,6 +36,7 @@ _state: dict = {
     "review_vehicles": [],
     "review_confirmed": [],
     "review_ticketed": [],
+    "review_dismissed": [],
 }
 _auto_stop_event = threading.Event()
 _auto_thread: threading.Thread | None = None
@@ -163,6 +164,7 @@ def _auto_loop(baseline_analyses: int) -> None:
                 _state["review_vehicles"] = violations
                 _state["review_confirmed"] = []
                 _state["review_ticketed"] = []
+                _state["review_dismissed"] = []
                 _state["last_error"] = None
                 events.log("warn", "Patrol paused for parking review: " + ", ".join(violations))
                 return
@@ -188,8 +190,7 @@ def _auto_loop(baseline_analyses: int) -> None:
                 _state["last_error"] = f"Could not confirm stop at obstacle: {stop_reply}"
                 events.log("error", _state["last_error"])
                 return
-            # Stop immediately on the first hit, but require a second reading
-            # before pivoting so one noisy IR/sonar sample doesn't turn the car.
+            # Require a 2nd confirmation reading before taking avoidance action
             if obstacle_samples < 2:
                 _auto_stop_event.wait(0.08)
                 continue
@@ -197,12 +198,22 @@ def _auto_loop(baseline_analyses: int) -> None:
             blocked_turns += 1
             if blocked_turns > 4:
                 _state["mode"] = "blocked"
-                _state["last_error"] = "Obstacle still detected after four turns; patrol stopped."
+                _state["last_error"] = "Obstacle still detected after multiple escape attempts; patrol stopped."
                 events.log("warn", _state["last_error"])
                 return
-            # The single forward-facing sensor cannot choose a free side. Try
-            # alternating timed pivots and re-check before driving forward.
-            turned, turn_reply = _auto_serial(f"MOVE {turn} {speed} {turn_ms}")
+
+            # 1. Reverse for clearance to keep front corners from scraping/binding
+            events.log("info", "Obstacle confirmed. Backing up for clearance...")
+            _auto_serial(f"MOVE B {speed} 250")
+            _auto_stop_event.wait(0.28)
+            _auto_serial("STOP", stopping=True)
+            _auto_stop_event.wait(0.05)
+
+            # 2. Consistent escape turn: don't immediately ping-pong back into obstacle
+            current_turn = turn if blocked_turns <= 2 else ("R" if turn == "L" else "L")
+            turn_duration = turn_ms if blocked_turns < 3 else min(500, int(turn_ms * 1.4))
+            events.log("info", f"Obstacle avoidance pivot {current_turn} ({turn_duration}ms)...")
+            turned, turn_reply = _auto_serial(f"MOVE {current_turn} {speed} {turn_duration}")
             if not turned:
                 if _auto_stop_event.is_set():
                     break
@@ -210,14 +221,14 @@ def _auto_loop(baseline_analyses: int) -> None:
                 _state["last_error"] = f"Obstacle-avoidance turn failed: {turn_reply}"
                 events.log("error", _state["last_error"])
                 return
-            turn = "R" if turn == "L" else "L"
-            _auto_stop_event.wait(turn_ms / 1000.0 + 0.06)
+            _auto_stop_event.wait(turn_duration / 1000.0 + 0.06)
             stopped, stop_reply = _auto_serial("STOP", stopping=True)
             if not stopped:
                 _state["mode"] = "blocked"
                 _state["last_error"] = f"Could not confirm stop after turn: {stop_reply}"
                 events.log("error", _state["last_error"])
                 return
+            _auto_stop_event.wait(0.05)
             continue
 
         obstacle_samples = 0
@@ -274,9 +285,14 @@ def status():
         "review_vehicles": list(_state["review_vehicles"]),
         "review_confirmed": list(_state["review_confirmed"]),
         "review_ticketed": list(_state["review_ticketed"]),
+        "review_dismissed": list(_state.get("review_dismissed", [])),
         "review_ready": (bool(_state["review_vehicles"]) and
-                         set(_state["review_vehicles"]).issubset(_state["review_confirmed"]) and
-                         set(_state["review_vehicles"]).issubset(_state["review_ticketed"])),
+                         set(_state["review_vehicles"]).issubset(
+                             set(_state["review_confirmed"]) | set(_state.get("review_dismissed", []))
+                         ) and
+                         set(_state["review_vehicles"]).issubset(
+                             set(_state["review_ticketed"]) | set(_state.get("review_dismissed", []))
+                         )),
         "last_error": _state.get("last_error"),
         "estop": _state["estop"],
         "commands": _state["commands"],
@@ -337,6 +353,19 @@ def review_confirm(request: ReviewConfirmation):
     return {"status": "confirmed", "vehicle_id": request.vehicle_id}
 
 
+@router.post("/api/robot/review/dismiss")
+def review_dismiss(request: ReviewConfirmation):
+    """Dismiss a review car (e.g. false detection or manual override) to unblock patrol."""
+    if _state["mode"] != "review":
+        raise HTTPException(status_code=409, detail="There is no parking review in progress.")
+    if request.vehicle_id not in _state["review_vehicles"]:
+        raise HTTPException(status_code=404, detail="That vehicle is not part of this review.")
+    if request.vehicle_id not in _state.setdefault("review_dismissed", []):
+        _state["review_dismissed"].append(request.vehicle_id)
+    events.log("info", f"Vehicle {request.vehicle_id} dismissed by operator.")
+    return {"status": "dismissed", "vehicle_id": request.vehicle_id}
+
+
 @router.post("/api/robot/estop/clear")
 def estop_clear():
     if _real_mode():
@@ -388,6 +417,7 @@ def auto_start():
     _state["review_vehicles"] = []
     _state["review_confirmed"] = []
     _state["review_ticketed"] = []
+    _state["review_dismissed"] = []
     _state["last_error"] = None
     monitor.start()
     if _real_mode():
@@ -411,6 +441,7 @@ def auto_stop():
     _state["review_vehicles"] = []
     _state["review_confirmed"] = []
     _state["review_ticketed"] = []
+    _state["review_dismissed"] = []
     # Monitoring is independent from driving and stays available in idle mode.
     events.log("info", "Auto mode stopped. Robot is idle.")
     return {"status": "idle"}
@@ -425,10 +456,12 @@ def auto_resume():
     if _state["mode"] != "review":
         raise HTTPException(status_code=409,
                             detail="Patrol is not paused for review.")
-    if not (set(_state["review_vehicles"]).issubset(_state["review_confirmed"]) and
-            set(_state["review_vehicles"]).issubset(_state["review_ticketed"])):
+    confirmed_or_dismissed = set(_state["review_confirmed"]) | set(_state.get("review_dismissed", []))
+    ticketed_or_dismissed = set(_state["review_ticketed"]) | set(_state.get("review_dismissed", []))
+    if not (set(_state["review_vehicles"]).issubset(confirmed_or_dismissed) and
+            set(_state["review_vehicles"]).issubset(ticketed_or_dismissed)):
         raise HTTPException(status_code=409,
-                            detail="Confirm bad parking and successfully print a ticket for each review vehicle before continuing.")
+                            detail="Confirm & ticket or dismiss each review vehicle before continuing.")
     if _link() == "offline":
         raise HTTPException(status_code=503,
                             detail=arduino_serial.last_error or "No reply from the Arduino.")
@@ -436,6 +469,7 @@ def auto_resume():
     _state["review_vehicles"] = []
     _state["review_confirmed"] = []
     _state["review_ticketed"] = []
+    _state["review_dismissed"] = []
     _state["mode"] = "auto"
     _state["last_error"] = None
     if _real_mode():

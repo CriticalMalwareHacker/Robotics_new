@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Check, Printer, Play } from 'lucide-react'
+import { AlertTriangle, Check, Printer, Play, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 export default function DetectionCard({
   vehicles = [], printingId, onPrint, reviewMode, reviewVehicles = [],
   reviewConfirmed = [], reviewTicketed = [], reviewReady = false,
-  onConfirm, onResume,
+  onConfirm, onDismiss, onResume,
 }) {
   const [plates, setPlates] = useState({})
   const [confirmed, setConfirmed] = useState({})
@@ -132,6 +132,15 @@ export default function DetectionCard({
                   <Button className="sm:min-w-36" disabled={plate.trim().length < 4 || isPrinting || isPrinted || (reviewMode && !isReviewVehicle)} onClick={() => print(vehicle)}>
                     <Printer className={isPrinting ? 'animate-pulse' : ''} />
                     {isPrinting ? 'Printing…' : isPrinted ? 'Ticket printed' : 'Print ticket'}
+                  </Button>
+                )}
+                {reviewMode && isReviewVehicle && onDismiss && (
+                  <Button
+                    variant="outline"
+                    className="sm:min-w-28 text-muted-foreground hover:text-foreground"
+                    onClick={() => onDismiss(vehicle)}
+                  >
+                    <XCircle className="h-4 w-4" /> Dismiss
                   </Button>
                 )}
               </div>

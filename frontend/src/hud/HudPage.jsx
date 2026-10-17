@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Toaster } from 'sonner'
 import { toast } from 'sonner'
-import { autoResume, confirmParkingReview, estopClear, printViolation, testPrint } from './api'
+import { autoResume, confirmParkingReview, dismissParkingReview, estopClear, printViolation, testPrint } from './api'
 import { useHudState } from './useHudState'
 import CameraFeed from './components/CameraFeed'
 import ControlsBar from './components/ControlsBar'
@@ -98,6 +98,15 @@ export default function HudPage() {
             onConfirm={async (vehicle) => {
               await confirmParkingReview(vehicle.id)
               await refresh()
+            }}
+            onDismiss={async (vehicle) => {
+              try {
+                await dismissParkingReview(vehicle.id)
+                await refresh()
+                toast.info(`Vehicle ${vehicle.id} dismissed.`)
+              } catch (err) {
+                toast.error(err.message || 'Could not dismiss vehicle.')
+              }
             }}
             onResume={async () => {
               try { await autoResume(); refresh(); toast.success('Patrol resumed.') }
