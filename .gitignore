@@ -2,11 +2,9 @@
 venv/
 .runtime-venv/
 
-# JavaScript dependencies and build output
+# JavaScript dependencies
 node_modules/
 frontend/node_modules/
-dist/
-frontend/dist/
 
 __pycache__/
 

@@ -73,7 +73,7 @@ export default function ManualDriveSheet({ open, onOpenChange, disabled, send })
     }
   }, [open, hold, stopAll])
 
-  const speedMode = speed < 90 ? 'Creep' : speed > 150 ? 'Rapid' : 'Cruise'
+  const speedMode = speed < 90 ? 'Precision' : speed > 150 ? 'Rapid' : 'Cruise'
 
   return (
     <Sheet
@@ -83,17 +83,21 @@ export default function ManualDriveSheet({ open, onOpenChange, disabled, send })
         onOpenChange(v)
       }}
     >
-      <SheetContent className="hud-glass-card border-l border-border/80 w-full sm:max-w-md p-5 flex flex-col justify-between">
+      <SheetContent
+        side="responsive"
+        className="hud-glass-card border-border/80 w-full sm:max-w-md p-4 sm:p-5 flex flex-col justify-between"
+      >
         <div>
-          <SheetHeader className="pb-3 border-b border-border/50">
-            <div className="flex items-center gap-2">
+          {/* Header */}
+          <SheetHeader className="pb-2.5 border-b border-border/50">
+            <div className="flex items-center gap-2.5">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
                 <Gamepad2 className="h-4 w-4" />
               </div>
               <div>
-                <SheetTitle className="text-base font-bold tracking-tight">Manual Teleoperation</SheetTitle>
+                <SheetTitle className="text-base font-bold tracking-tight">Manual Drive Control</SheetTitle>
                 <SheetDescription className="text-xs">
-                  Touch virtual D-pad or use W, A, S, D / Arrow keys
+                  Press and hold buttons or use WASD / Arrow keys. Release to stop.
                 </SheetDescription>
               </div>
             </div>
@@ -105,85 +109,102 @@ export default function ManualDriveSheet({ open, onOpenChange, disabled, send })
             </div>
           )}
 
-          {/* D-Pad Controller */}
-          <div className="my-6 flex flex-col items-center justify-center select-none touch-none">
-            <div className="relative grid grid-cols-3 grid-rows-3 gap-2.5 p-3 rounded-2xl border border-border/60 bg-background/40 backdrop-blur-md shadow-2xl">
-              {/* Forward */}
+          {/* Symmetrical Diamond D-Pad */}
+          <div className="my-5 flex flex-col items-center justify-center select-none touch-none">
+            <div className="relative grid grid-cols-3 grid-rows-3 gap-2 sm:gap-3 p-3 sm:p-4 rounded-2xl border border-border/70 bg-black/40 backdrop-blur-md shadow-2xl">
+              {/* Row 1: Forward Button (Center) */}
               <div className="col-start-2 row-start-1 flex justify-center">
-                <DriveButton
+                <DrivePadButton
+                  cmd="F"
                   label="Forward"
+                  shortcut="W / ↑"
                   active={activeCmd === 'F'}
                   disabled={disabled}
                   onHold={() => hold('F')}
                   onRelease={stopAll}
                 >
-                  <ArrowUp className="h-6 w-6" />
-                </DriveButton>
+                  <ArrowUp className="h-7 w-7" />
+                </DrivePadButton>
               </div>
 
-              {/* Turn Left */}
+              {/* Row 2, Col 1: Turn Left */}
               <div className="col-start-1 row-start-2 flex justify-center">
-                <DriveButton
-                  label="Turn Left"
+                <DrivePadButton
+                  cmd="L"
+                  label="Left"
+                  shortcut="A / ←"
                   active={activeCmd === 'L'}
                   disabled={disabled}
                   onHold={() => hold('L')}
                   onRelease={stopAll}
                 >
-                  <ArrowLeft className="h-6 w-6" />
-                </DriveButton>
+                  <ArrowLeft className="h-7 w-7" />
+                </DrivePadButton>
               </div>
 
-              {/* Center Halt */}
+              {/* Row 2, Col 2: Center STOP */}
               <div className="col-start-2 row-start-2 flex justify-center">
                 <button
                   type="button"
-                  aria-label="Stop Motors"
+                  aria-label="Halt Motors"
                   disabled={disabled}
                   onClick={stopAll}
-                  className="flex h-16 w-16 items-center justify-center rounded-xl border border-border/80 bg-background/80 text-muted-foreground hover:bg-red-500/20 hover:text-red-400 active:scale-95 transition-all shadow-inner"
+                  className="flex h-16 w-16 sm:h-20 sm:w-20 flex-col items-center justify-center rounded-xl border border-red-500/40 bg-red-950/30 text-red-400 hover:bg-red-900/50 hover:text-white active:scale-95 transition-all shadow-inner font-mono text-[10px] font-bold"
                 >
-                  <Square className="h-5 w-5 fill-current" />
+                  <Square className="h-5 w-5 sm:h-6 sm:w-6 fill-current mb-0.5" />
+                  <span>STOP</span>
                 </button>
               </div>
 
-              {/* Turn Right */}
+              {/* Row 2, Col 3: Turn Right */}
               <div className="col-start-3 row-start-2 flex justify-center">
-                <DriveButton
-                  label="Turn Right"
+                <DrivePadButton
+                  cmd="R"
+                  label="Right"
+                  shortcut="D / →"
                   active={activeCmd === 'R'}
                   disabled={disabled}
                   onHold={() => hold('R')}
                   onRelease={stopAll}
                 >
-                  <ArrowRight className="h-6 w-6" />
-                </DriveButton>
+                  <ArrowRight className="h-7 w-7" />
+                </DrivePadButton>
               </div>
 
-              {/* Reverse */}
+              {/* Row 3: Reverse Button (Center) */}
               <div className="col-start-2 row-start-3 flex justify-center">
-                <DriveButton
+                <DrivePadButton
+                  cmd="B"
                   label="Reverse"
+                  shortcut="S / ↓"
                   active={activeCmd === 'B'}
                   disabled={disabled}
                   onHold={() => hold('B')}
                   onRelease={stopAll}
                 >
-                  <ArrowDown className="h-6 w-6" />
-                </DriveButton>
+                  <ArrowDown className="h-7 w-7" />
+                </DrivePadButton>
               </div>
             </div>
 
-            <p className="mt-2 text-[11px] font-mono tracking-wider text-muted-foreground uppercase">
-              {activeCmd ? `DRIVING [${activeCmd}]` : 'MOTORS IDLE'}
-            </p>
+            {/* Active Telemetry Badge */}
+            <div className="mt-2.5 flex items-center gap-2">
+              <span
+                className={`inline-block size-2 rounded-full ${
+                  activeCmd ? 'bg-cyan-400 shadow-[0_0_8px_#22d3ee]' : 'bg-muted-foreground/40'
+                }`}
+              />
+              <span className="font-mono text-xs tracking-wider text-muted-foreground uppercase">
+                {activeCmd ? `DRIVING [${activeCmd}] — ${speed} PWM` : 'MOTORS STANDBY'}
+              </span>
+            </div>
           </div>
 
           {/* Speed & Throttle Slider */}
-          <div className="rounded-xl border border-border/60 bg-background/50 p-4 space-y-3">
+          <div className="rounded-xl border border-border/60 bg-background/50 p-3.5 sm:p-4 space-y-2.5">
             <div className="flex items-center justify-between text-xs">
               <span className="font-semibold text-foreground flex items-center gap-1.5">
-                <Zap className="h-3.5 w-3.5 text-amber-400" /> Motor Throttle
+                <Zap className="h-3.5 w-3.5 text-amber-400" /> Drive Speed (PWM)
               </span>
               <div className="flex items-center gap-1.5 font-mono">
                 <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase font-bold text-muted-foreground">
@@ -203,27 +224,39 @@ export default function ManualDriveSheet({ open, onOpenChange, disabled, send })
               className="py-1"
             />
 
-            <div className="flex justify-between text-[10px] font-mono text-muted-foreground px-1">
-              <span>50 PWM</span>
-              <span>120 (Standard)</span>
-              <span>200 PWM</span>
+            {/* Quick preset buttons */}
+            <div className="flex gap-2 pt-1">
+              {[80, 120, 160].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setSpeed(preset)}
+                  className={`flex-1 rounded-md py-1 text-[11px] font-mono border transition-all ${
+                    speed === preset
+                      ? 'border-cyan-400 bg-cyan-950/50 text-cyan-300 font-bold'
+                      : 'border-border/60 bg-background/40 text-muted-foreground hover:bg-muted/40'
+                  }`}
+                >
+                  {preset} PWM
+                </button>
+              ))}
             </div>
           </div>
         </div>
 
         {/* Footer Actions & Shortcut Info */}
-        <div className="mt-4 pt-3 border-t border-border/50 space-y-2">
+        <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
           <Button
             variant="secondary"
-            className="w-full h-11 text-xs sm:text-sm font-semibold bg-muted hover:bg-muted/80 text-foreground"
+            className="w-full h-10 text-xs sm:text-sm font-semibold bg-muted hover:bg-muted/80 text-foreground"
             disabled={disabled}
             onClick={stopAll}
           >
-            <Octagon className="mr-2 h-4 w-4 text-red-400" /> Stop Motors
+            <Octagon className="mr-2 h-4 w-4 text-red-400" /> Emergency Halt
           </Button>
 
           <p className="text-[11px] text-center text-muted-foreground">
-            Keyboard shortcuts: <span className="font-mono text-foreground font-semibold">W A S D</span> or arrow keys.
+            Desktop shortcuts: <span className="font-mono text-foreground font-semibold">W A S D</span> or arrow keys.
           </p>
         </div>
       </SheetContent>
@@ -231,11 +264,11 @@ export default function ManualDriveSheet({ open, onOpenChange, disabled, send })
   )
 }
 
-function DriveButton({ label, active, disabled, onHold, onRelease, children }) {
+function DrivePadButton({ cmd, label, shortcut, active, disabled, onHold, onRelease, children }) {
   return (
     <button
       type="button"
-      aria-label={label}
+      aria-label={`${label} (${shortcut})`}
       disabled={disabled}
       onPointerDown={(e) => {
         e.preventDefault()
@@ -244,13 +277,16 @@ function DriveButton({ label, active, disabled, onHold, onRelease, children }) {
       onPointerUp={onRelease}
       onPointerLeave={onRelease}
       onContextMenu={(e) => e.preventDefault()}
-      className={`flex h-16 w-16 items-center justify-center rounded-xl border font-bold transition-all select-none touch-none active:scale-95 shadow-md ${
+      className={`flex h-16 w-16 sm:h-20 sm:w-20 flex-col items-center justify-center rounded-xl border transition-all select-none touch-none active:scale-95 shadow-md ${
         active
-          ? 'border-cyan-400 bg-cyan-500 text-black shadow-[0_0_15px_rgba(6,182,212,0.6)] scale-95'
-          : 'border-border/80 bg-background/90 text-foreground hover:border-cyan-500/50 hover:bg-muted/60'
+          ? 'border-cyan-400 bg-cyan-500 text-black shadow-[0_0_20px_rgba(6,182,212,0.7)] scale-95'
+          : 'border-border/80 bg-background/90 text-foreground hover:border-cyan-500/60 hover:bg-muted/50'
       } ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
     >
       {children}
+      <span className="mt-1 font-mono text-[9px] tracking-wider uppercase opacity-75 font-semibold">
+        {label}
+      </span>
     </button>
   )
 }

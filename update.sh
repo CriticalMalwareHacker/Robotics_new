@@ -53,6 +53,11 @@ echo "[3/4] Pulling latest changes from GitHub (robotics branch)..."
 cd "${PROJECT_DIR}"
 git pull origin robotics
 
+if command -v npm >/dev/null 2>&1 && [[ -d "${PROJECT_DIR}/frontend" ]]; then
+    echo "      Rebuilding frontend distribution..."
+    (cd "${PROJECT_DIR}/frontend" && npm run build) || true
+fi
+
 echo "[4/4] Restarting ${SERVICE_NAME} service..."
 sudo systemctl restart "${SERVICE_NAME}"
 sudo systemctl --no-pager status "${SERVICE_NAME}" | head -n 12 || true
