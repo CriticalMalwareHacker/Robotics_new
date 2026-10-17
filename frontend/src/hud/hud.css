@@ -1,83 +1,198 @@
 @tailwind components;
 @tailwind utilities;
 
-/* HUD-only tokens. Scoped under .hud-root so the existing LCD pages are untouched.
- * Light defaults here; .dark overrides below. Palette from the HUD spec. */
+/* ParkSensei Modern Cyber-Tactical Design System */
 .hud-root {
-  --background: 0 0% 100%;
-  --foreground: 0 0% 9%;
+  --background: 220 20% 98%;
+  --foreground: 222 47% 11%;
   --card: 0 0% 100%;
-  --card-foreground: 0 0% 9%;
-  --muted: 0 0% 96.1%;
-  --muted-foreground: 0 0% 45.1%;
-  --border: 0 0% 89.8%;
+  --card-foreground: 222 47% 11%;
+  --muted: 220 14% 96%;
+  --muted-foreground: 220 9% 46%;
+  --border: 220 13% 91%;
   --primary: 221.2 83.2% 53.3%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 0 0% 96.1%;
-  --secondary-foreground: 0 0% 9%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 14% 96%;
+  --secondary-foreground: 222 47% 11%;
   --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 98%;
-  --accent: 0 0% 96.1%;
-  --accent-foreground: 0 0% 9%;
-  --radius: 0.5rem;
+  --destructive-foreground: 0 0% 100%;
+  --accent: 220 14% 96%;
+  --accent-foreground: 222 47% 11%;
+  --radius: 0.75rem;
 
-  font-family: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
   min-height: 100dvh;
   width: 100%;
-  overflow-x: clip;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
 .hud-root.dark {
-  --background: 240 10% 3.9%;      /* #09090B */
-  --foreground: 0 0% 98%;
-  --card: 240 7% 6%;               /* #0F0F12 */
-  --card-foreground: 0 0% 98%;
-  --muted: 240 4% 12%;
-  --muted-foreground: 240 5% 65%;  /* #A1A1AA */
-  --border: 240 4% 16%;            /* #27272A */
-  --primary: 217.2 91.2% 59.8%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 240 4% 16%;
-  --secondary-foreground: 0 0% 98%;
+  --background: 224 71% 4%;        /* #030712 - deep cosmic obsidian */
+  --foreground: 210 40% 98%;        /* #f9fafb */
+  --card: 222 47% 8%;               /* #0b1120 - deep navy-slate */
+  --card-foreground: 210 40% 98%;
+  --muted: 217 33% 13%;             /* #151e32 */
+  --muted-foreground: 215 20% 65%;  /* #94a3b8 */
+  --border: 217 33% 17%;            /* #1e293b */
+  --primary: 217.2 91.2% 59.8%;     /* #3b82f6 */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 217 33% 15%;
+  --secondary-foreground: 210 40% 98%;
   --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 98%;
-  --accent: 240 4% 16%;
-  --accent-foreground: 0 0% 98%;
+  --destructive-foreground: 0 0% 100%;
+  --accent: 217 33% 15%;
+  --accent-foreground: 210 40% 98%;
+
+  background: radial-gradient(circle at 50% 0%, #0d1527 0%, #030712 65%);
 }
 
-.hud-root h1, .hud-root h2, .hud-root h3 { line-height: 1.2; }
-.hud-root p { line-height: 1.4; }
+/* Typography styles */
+.hud-root h1, .hud-root h2, .hud-root h3 {
+  font-family: 'Outfit', 'Inter', sans-serif;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
 
-/* No preflight on this project, so form controls would fall back to the
- * browser font. Inherit the HUD typeface explicitly. */
 .hud-root button, .hud-root input, .hud-root select, .hud-root textarea {
   font: inherit;
   color: inherit;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Semantic colors (meaning only, never decoration). */
-.hud-ok { color: #16A34A; }
-.hud-root.dark .hud-ok { color: #22C55E; }
-.hud-warn { color: #D97706; }
-.hud-root.dark .hud-warn { color: #F59E0B; }
-.hud-bad { color: #DC2626; }
-.hud-root.dark .hud-bad { color: #EF4444; }
-.hud-info { color: #2563EB; }
-.hud-root.dark .hud-info { color: #3B82F6; }
-.hud-dot-ok { background-color: #16A34A; }
-.hud-root.dark .hud-dot-ok { background-color: #22C55E; }
-.hud-dot-warn { background-color: #D97706; }
-.hud-root.dark .hud-dot-warn { background-color: #F59E0B; }
-.hud-dot-bad { background-color: #DC2626; }
-.hud-root.dark .hud-dot-bad { background-color: #EF4444; }
-.hud-dot-info { background-color: #2563EB; }
-.hud-root.dark .hud-dot-info { background-color: #3B82F6; }
-.hud-dot-muted { background-color: hsl(var(--muted-foreground)); }
+/* Glassmorphism & Cyber Card Effects */
+.hud-glass-card {
+  background: rgba(11, 17, 32, 0.78);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+}
 
-/* Changing numbers never jitter. */
-.tnum { font-variant-numeric: tabular-nums; }
+.hud-root:not(.dark) .hud-glass-card {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* Glowing Neon Semantic Indicators */
+.hud-ok { color: #10B981; }
+.hud-warn { color: #F59E0B; }
+.hud-bad { color: #EF4444; }
+.hud-info { color: #06B6D4; }
+
+.hud-dot-ok {
+  background-color: #10B981;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+}
+.hud-dot-warn {
+  background-color: #F59E0B;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+}
+.hud-dot-bad {
+  background-color: #EF4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+}
+.hud-dot-info {
+  background-color: #06B6D4;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.6);
+}
+.hud-dot-muted {
+  background-color: #64748B;
+}
+
+/* Radar & Live Beacon Animations */
+@keyframes hud-beacon {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.hud-pulse-live {
+  animation: hud-beacon 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes hud-alert {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.hud-pulse-danger {
+  animation: hud-alert 1.8s infinite;
+}
+
+/* Tabular Numbers for Jitter-Free Telemetry */
+.tnum {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom Scrollbars */
+.hud-root ::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.hud-root ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.hud-root ::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 99px;
+}
+.hud-root ::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+/* Touch Friendly Utilities */
+.touch-press {
+  transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), filter 0.12s ease;
+}
+.touch-press:active {
+  transform: scale(0.94);
+  filter: brightness(0.9);
+}
+
+/* Floating Bottom Dock Container */
+.hud-dock-wrapper {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  padding: 10px 16px max(14px, env(safe-area-inset-bottom));
+  background: rgba(11, 17, 32, 0.85);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.hud-dock {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+@media (max-width: 480px) {
+  .hud-dock {
+    gap: 6px;
+  }
+}
+
+.hud-root:not(.dark) .hud-dock-wrapper {
+  background: rgba(255, 255, 255, 0.88);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.06);
+}
 
 @media (prefers-reduced-motion: reduce) {
   .hud-root *, .hud-root *::before, .hud-root *::after {

@@ -1,41 +1,66 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { ArrowLeft, ArrowUpRight, CarFront, CircleParking, Clock3, RefreshCw, Ticket } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, CarFront, CircleParking, Clock3, RefreshCw, Ticket, ShieldCheck } from 'lucide-react'
 import { Button } from './components/ui/button'
 import { Card } from './components/ui/card'
 import { apiUrl, getTicketHistory } from './hud/api'
 import './portal.css'
 
 function Home() {
-  useEffect(() => { document.title = 'ParkSensei' }, [])
+  useEffect(() => {
+    document.title = 'ParkSensei — Autonomous Robot Console'
+  }, [])
 
   return (
     <main className="portal-shell">
       <header className="portal-header">
-        <Link to="/" className="portal-brand"><span className="portal-brand-icon"><CircleParking /></span>ParkSensei</Link>
-        <span className="portal-header-note">Parking monitor</span>
+        <Link to="/" className="portal-brand">
+          <span className="portal-brand-icon">
+            <CircleParking />
+          </span>
+          ParkSensei
+        </Link>
+        <span className="portal-header-note">Autonomous Sentinel</span>
       </header>
+
       <section className="portal-home">
-        <p className="portal-eyebrow">LOCAL ROBOT CONSOLE</p>
-        <h1>Good to see you.</h1>
-        <p className="portal-subtitle">Choose where you want to go.</p>
+        <p className="portal-eyebrow">TACTICAL ROBOT CONSOLE</p>
+        <h1>ParkSensei Sentinel</h1>
+        <p className="portal-subtitle">
+          Autonomous parking space surveillance, AI violation detection, and on-spot thermal citation system.
+        </p>
+
         <div className="portal-options">
           <Link to="/hud" className="portal-option-link">
             <Card className="portal-option">
-              <span className="portal-option-icon"><CarFront /></span>
-              <span className="portal-option-copy"><strong>Open live HUD</strong><small>Camera, parking detection, and robot controls</small></span>
+              <span className="portal-option-icon">
+                <CarFront />
+              </span>
+              <span className="portal-option-copy">
+                <strong>Launch Robot HUD</strong>
+                <small>Live camera stream, telemetry sensors, AI parking detector & manual steering</small>
+              </span>
               <ArrowUpRight className="portal-option-arrow" />
             </Card>
           </Link>
+
           <Link to="/history" className="portal-option-link">
             <Card className="portal-option">
-              <span className="portal-option-icon"><Ticket /></span>
-              <span className="portal-option-copy"><strong>Ticket history</strong><small>Review parking notices created by the system</small></span>
+              <span className="portal-option-icon">
+                <Ticket />
+              </span>
+              <span className="portal-option-copy">
+                <strong>Citation Archive</strong>
+                <small>Review logged parking tickets, license plate records, and print dispatch status</small>
+              </span>
               <ArrowUpRight className="portal-option-arrow" />
             </Card>
           </Link>
         </div>
-        <p className="portal-footnote"><span className="portal-live-dot" />Self-hosted on your local network</p>
+
+        <p className="portal-footnote">
+          <span className="portal-live-dot" /> Connected to Raspberry Pi 5 node (10.42.0.1:8000)
+        </p>
       </section>
     </main>
   )
@@ -44,7 +69,9 @@ function Home() {
 function formatDate(value) {
   if (!value) return 'Time unavailable'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
 
 function TicketHistory() {
@@ -64,34 +91,102 @@ function TicketHistory() {
     }
   }, [])
 
-  useEffect(() => { document.title = 'Ticket history - ParkSensei'; refresh() }, [refresh])
+  useEffect(() => {
+    document.title = 'Citation Archive — ParkSensei'
+    refresh()
+  }, [refresh])
 
   return (
     <main className="portal-shell">
       <header className="portal-header">
-        <Link to="/" className="portal-brand"><span className="portal-brand-icon"><CircleParking /></span>ParkSensei</Link>
-        <Link to="/" className="portal-back-link"><ArrowLeft /> Menu</Link>
+        <Link to="/" className="portal-brand">
+          <span className="portal-brand-icon">
+            <CircleParking />
+          </span>
+          ParkSensei
+        </Link>
+        <Link to="/" className="portal-back-link">
+          <ArrowLeft /> Back to Console
+        </Link>
       </header>
+
       <section className="history-page">
         <div className="history-heading">
-          <div><p className="portal-eyebrow">RECORDS</p><h1>Ticket history</h1><p className="portal-subtitle">Parking notices recorded by this system.</p></div>
-          <Button variant="outline" className="portal-refresh" onClick={() => { setLoading(true); refresh() }} disabled={loading}><RefreshCw /> Refresh</Button>
+          <div>
+            <p className="portal-eyebrow">ENFORCEMENT AUDIT</p>
+            <h1>Citation Archive</h1>
+            <p className="portal-subtitle">Historical log of violations recorded by ParkSensei.</p>
+          </div>
+          <Button
+            variant="outline"
+            className="portal-refresh"
+            onClick={() => {
+              setLoading(true)
+              refresh()
+            }}
+            disabled={loading}
+          >
+            <RefreshCw className={loading ? 'animate-spin' : ''} /> Refresh Records
+          </Button>
         </div>
+
         <Card className="ticket-list-card">
-          {loading ? <div className="history-empty">Loading tickets...</div> : error ? (
-            <div className="history-empty"><p>{error}</p><Button variant="outline" onClick={() => { setLoading(true); refresh() }}>Try again</Button></div>
+          {loading ? (
+            <div className="history-empty">Loading enforcement records…</div>
+          ) : error ? (
+            <div className="history-empty">
+              <p>{error}</p>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setLoading(true)
+                  refresh()
+                }}
+              >
+                Retry
+              </Button>
+            </div>
           ) : tickets.length === 0 ? (
-            <div className="history-empty"><span className="empty-ticket-icon"><Ticket /></span><strong>No tickets yet</strong><p>Tickets will appear here when the system records a parking violation.</p></div>
+            <div className="history-empty">
+              <span className="empty-ticket-icon">
+                <ShieldCheck />
+              </span>
+              <strong>No Violations Recorded</strong>
+              <p>Tickets will appear here when ParkSensei detects and tickets an unauthorized vehicle.</p>
+            </div>
           ) : (
             <div className="ticket-list">
               {tickets.map((ticket) => (
                 <article className="ticket-row" key={ticket.number}>
-                  <span className="ticket-row-icon"><Ticket /></span>
-                  <div className="ticket-row-main"><div className="ticket-row-title"><strong>{ticket.number || 'Parking ticket'}</strong><span className={`ticket-status status-${ticket.status || 'saved'}`}>{ticket.status || 'saved'}</span></div>
-                    <p>{[ticket.plate, ticket.vehicle, ticket.slot, ticket.violation].filter(Boolean).join(' | ') || ticket.message || 'Parking notice'}</p>
-                    <small><Clock3 /> {formatDate(ticket.time)}</small>
+                  <span className="ticket-row-icon">
+                    <Ticket />
+                  </span>
+                  <div className="ticket-row-main">
+                    <div className="ticket-row-title">
+                      <strong>{ticket.number || 'PARK-NOTICE'}</strong>
+                      <span className={`ticket-status status-${ticket.status || 'saved'}`}>
+                        {ticket.status || 'saved'}
+                      </span>
+                    </div>
+                    <p>
+                      {[ticket.plate, ticket.vehicle, ticket.slot, ticket.violation]
+                        .filter(Boolean)
+                        .join(' · ') || ticket.message || 'Parking violation'}
+                    </p>
+                    <small>
+                      <Clock3 /> {formatDate(ticket.time)}
+                    </small>
                   </div>
-                  {ticket.image_url && <a className="ticket-image-link" href={`${apiUrl}${ticket.image_url}`} target="_blank" rel="noreferrer">View ticket <ArrowUpRight /></a>}
+                  {ticket.image_url && (
+                    <a
+                      className="ticket-image-link"
+                      href={`${apiUrl}${ticket.image_url}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View Notice <ArrowUpRight />
+                    </a>
+                  )}
                 </article>
               ))}
             </div>

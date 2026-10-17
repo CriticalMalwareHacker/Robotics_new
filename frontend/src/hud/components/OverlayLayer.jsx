@@ -18,34 +18,121 @@ export default function OverlayLayer({ frame, parking, show, faded }) {
       viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="xMidYMid meet"
       aria-hidden
-      className="pointer-events-none absolute inset-0 h-full w-full"
-      style={faded ? { opacity: 0.4 } : undefined}
+      className="pointer-events-none absolute inset-0 h-full w-full select-none"
+      style={faded ? { opacity: 0.35 } : undefined}
     >
+      <defs>
+        <filter id="hud-text-shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="#000" floodOpacity="0.8" />
+        </filter>
+      </defs>
+
+      {/* Parking Slots */}
       {slots.map((s) => {
         const [x, y] = topLeft(s.polygon_px)
         return (
           <g key={s.name}>
-            <polygon points={poly(s.polygon_px)} fill="none" stroke="#fff" strokeOpacity="0.6" strokeWidth="1.5" />
-            <text x={x + 4} y={y + 16} fontSize="12" fill="#fff" fillOpacity="0.9">{s.name}</text>
+            <polygon
+              points={poly(s.polygon_px)}
+              fill="rgba(56, 189, 248, 0.04)"
+              stroke="rgba(56, 189, 248, 0.7)"
+              strokeWidth="2"
+              strokeDasharray="6 3"
+              strokeLinejoin="round"
+            />
+            <rect
+              x={x + 3}
+              y={y + 3}
+              width={Math.max(48, s.name.length * 8 + 10)}
+              height="18"
+              rx="4"
+              fill="rgba(15, 23, 42, 0.75)"
+              stroke="rgba(56, 189, 248, 0.4)"
+              strokeWidth="1"
+            />
+            <text
+              x={x + 8}
+              y={y + 16}
+              fontSize="11"
+              fontFamily="monospace"
+              fontWeight="bold"
+              fill="#38bdf8"
+            >
+              {s.name}
+            </text>
           </g>
         )
       })}
+
+      {/* Detected Vehicles */}
       {vehicles.map((v) => {
         const bad = v.valid === false
-        const color = bad ? '#EF4444' : '#22C55E'
+        const strokeColor = bad ? '#ef4444' : '#10b981'
+        const fillColor = bad ? 'rgba(239, 68, 68, 0.18)' : 'rgba(16, 185, 129, 0.12)'
         const [x, y] = topLeft(v.polygon_px)
-        const label = `${v.id || ''}  ${v.slot || ''}  ${v.valid == null ? '' : v.valid ? 'Legal' : 'Violation'}`.trim()
+        const label = `${v.id || ''} ${v.slot ? `· ${v.slot}` : ''} ${
+          v.valid == null ? '' : v.valid ? 'LEGAL' : 'VIOLATION'
+        }`.trim()
+
         return (
           <g key={v.id}>
-            <polygon points={poly(v.polygon_px)} fill="none" stroke={color} strokeWidth="2" />
-            <text x={x} y={Math.max(14, y - 6)} fontSize="12" fill={color}>{label}</text>
+            <polygon
+              points={poly(v.polygon_px)}
+              fill={fillColor}
+              stroke={strokeColor}
+              strokeWidth="2.5"
+              strokeLinejoin="round"
+            />
+            <rect
+              x={x}
+              y={Math.max(4, y - 22)}
+              width={Math.max(70, label.length * 7 + 12)}
+              height="20"
+              rx="4"
+              fill={bad ? 'rgba(185, 28, 28, 0.9)' : 'rgba(15, 23, 42, 0.85)'}
+              stroke={strokeColor}
+              strokeWidth="1"
+            />
+            <text
+              x={x + 6}
+              y={Math.max(18, y - 8)}
+              fontSize="11"
+              fontFamily="monospace"
+              fontWeight="bold"
+              fill="#ffffff"
+              filter="url(#hud-text-shadow)"
+            >
+              {label}
+            </text>
+
             {show.plates && v.plate && (
-              <text x={x} y={y + 30} fontSize="12" fill="#fff">{v.plate}</text>
+              <g>
+                <rect
+                  x={x}
+                  y={y + 26}
+                  width={v.plate.length * 8 + 14}
+                  height="18"
+                  rx="3"
+                  fill="#ffffff"
+                  stroke="#000000"
+                  strokeWidth="1.5"
+                />
+                <text
+                  x={x + 6}
+                  y={y + 39}
+                  fontSize="11"
+                  fontFamily="monospace"
+                  fontWeight="900"
+                  fill="#000000"
+                  letterSpacing="1"
+                >
+                  {v.plate}
+                </text>
+              </g>
             )}
           </g>
         )
       })}
-      {/* Robot pose, target and home render here once tracking lands. */}
     </svg>
   )
 }
