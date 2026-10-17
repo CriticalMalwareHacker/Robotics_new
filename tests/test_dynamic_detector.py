@@ -72,3 +72,33 @@ def test_dynamic_parking_violation_rules():
     analysis_straddle = analyze_dynamic_parking(straddle_dets, bays, lines)
     assert analysis_straddle.parking_valid is False
     assert analysis_straddle.results[0].violation == ViolationType.STRADDLING
+
+
+def test_dynamic_detector_real_world_feed():
+    from pathlib import Path
+    feed_path = Path(__file__).parent / "data" / "real_feed.jpg"
+    if not feed_path.exists():
+        pytest.skip("real_feed.jpg fixture not found")
+
+    img = cv2.imread(str(feed_path))
+    assert img is not None
+
+    bays, lines = detect_marker_lines_and_bays(img)
+    cards = detect_vehicle_cards(img)
+
+    # 3 parking spaces demarcated by marker lines
+    assert len(bays) == 3
+    assert len(lines) >= 3
+
+    # 2 vehicle cards: red (left) and black (right)
+    assert len(cards) == 2
+
+    analysis = analyze_dynamic_parking(cards, bays, lines)
+    # Red card is straddling between Bay 1 and Bay 2
+    assert analysis.results[0].violation == ViolationType.STRADDLING
+    # Black card is legally parked inside Bay 3
+    assert analysis.results[1].violation == ViolationType.LEGAL
+    # Overall parking has violation
+    assert analysis.parking_valid is False
+    assert analysis.violation == ViolationType.STRADDLING
+
