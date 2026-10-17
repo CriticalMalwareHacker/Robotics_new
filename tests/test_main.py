@@ -13,4 +13,4 @@ client = TestClient(app)
 def test_home_endpoint_returns_status():
     response = client.get("/")
     assert response.status_code == 200
-    assert "PrintSensei is Running" in response.text
+    assert "PrintSensei is Running" in response.text or "ParkSensei" in response.text

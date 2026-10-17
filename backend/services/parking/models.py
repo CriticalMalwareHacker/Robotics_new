@@ -17,7 +17,7 @@ class ViolationType(str, Enum):
 
 
 class Detection(BaseModel):
-    """One vehicle observation in table coordinates (centimetres)."""
+    """One vehicle observation in table coordinates (centimetres) or image px."""
 
     vehicle_id: str = Field(min_length=1, max_length=64)
     polygon: list[list[float]] = Field(min_length=3, max_length=64)
@@ -25,15 +25,17 @@ class Detection(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     plate_hint: str | None = Field(default=None, max_length=16)
     plate_conf: float | None = Field(default=None, ge=0.0, le=1.0)
+    polygon_px: list[list[int]] | None = None
 
 
 class Slot(BaseModel):
-    """One parking slot (or restricted zone) in table coordinates (cm)."""
+    """One parking slot (or restricted zone) in table coordinates (cm) or image px."""
 
     slot_id: str = Field(min_length=1, max_length=16)
     polygon: list[list[float]] = Field(min_length=3, max_length=64)
     angle_deg: float = Field(default=0.0, ge=-360.0, le=360.0)
     restricted: bool = False
+    polygon_px: list[list[int]] | None = None
 
 
 class SlotResult(BaseModel):

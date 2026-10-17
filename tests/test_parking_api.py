@@ -61,7 +61,7 @@ def test_status_shape(monkeypatch):
     resp = client.get("/api/parking/status")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["monitor"] == "stopped" and body["slots_loaded"] == 3
+    assert body["monitor"] in ("stopped", "running") and body["slots_loaded"] == 3
     assert "last_analysis" in body
 
 

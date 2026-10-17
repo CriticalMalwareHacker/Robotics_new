@@ -50,14 +50,22 @@ def _ordered_quad(points: np.ndarray) -> np.ndarray:
     return pts
 
 
-def _vehicle_crop(frame: np.ndarray, vehicle: Detection, h_px_to_cm: np.ndarray,
-                  calib_size: tuple[int, int]) -> np.ndarray | None:
+def _vehicle_crop(frame: np.ndarray, vehicle: Detection,
+                  h_px_to_cm: np.ndarray | None = None,
+                  calib_size: tuple[int, int] | None = None) -> np.ndarray | None:
     fh, fw = frame.shape[:2]
-    cw, ch = calib_size
-    h_cm_to_px = np.linalg.inv(np.asarray(h_px_to_cm, dtype=np.float64))
-    pts_cm = np.asarray(vehicle.polygon, dtype=np.float32).reshape(-1, 1, 2)
-    pts_calib = cv2.perspectiveTransform(pts_cm, h_cm_to_px).reshape(4, 2)
-    pts = pts_calib * np.asarray([fw / cw, fh / ch], dtype=np.float32)
+    if vehicle.polygon_px or h_px_to_cm is None:
+        pts = np.asarray(vehicle.polygon_px or vehicle.polygon, dtype=np.float32).reshape(-1, 2)
+        if len(pts) != 4:
+            x, y, w, h = cv2.boundingRect(pts)
+            crop = frame[max(0, y):min(fh, y + h), max(0, x):min(fw, x + w)]
+            return cv2.resize(crop, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC) if crop.size > 0 else None
+    else:
+        cw, ch = calib_size or (1280, 720)
+        h_cm_to_px = np.linalg.inv(np.asarray(h_px_to_cm, dtype=np.float64))
+        pts_cm = np.asarray(vehicle.polygon, dtype=np.float32).reshape(-1, 1, 2)
+        pts_calib = cv2.perspectiveTransform(pts_cm, h_cm_to_px).reshape(4, 2)
+        pts = pts_calib * np.asarray([fw / cw, fh / ch], dtype=np.float32)
     src = _ordered_quad(pts)
 
     top = np.linalg.norm(src[1] - src[0])
@@ -126,8 +134,8 @@ def _plate_candidate(result) -> tuple[str | None, float | None]:
 
 
 def read_vehicle_plates(frame: np.ndarray, detections: list[Detection],
-                        h_px_to_cm: np.ndarray,
-                        calib_size: tuple[int, int]) -> list[Detection]:
+                        h_px_to_cm: np.ndarray | None = None,
+                        calib_size: tuple[int, int] | None = None) -> list[Detection]:
     """Return detections with confident plate hints filled where OCR succeeds."""
     global _engine_error_logged
     try:

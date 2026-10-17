@@ -8,6 +8,7 @@ import ControlsBar from './components/ControlsBar'
 import DetectionCard from './components/DetectionCard'
 import EstopBanner from './components/EstopBanner'
 import EventLog from './components/EventLog'
+import ReviewModal from './components/ReviewModal'
 import StateCard from './components/StateCard'
 import TicketCard from './components/TicketCard'
 import TopBar from './components/TopBar'
@@ -27,6 +28,7 @@ export default function HudPage() {
   const [clearing, setClearing] = useState(false)
   const [printing, setPrinting] = useState(false)
   const [printingId, setPrintingId] = useState(null)
+  const [reviewModalOpen, setReviewModalOpen] = useState(false)
 
   const toggleTheme = () => {
     setTheme((t) => {
@@ -62,6 +64,13 @@ export default function HudPage() {
   useEffect(() => {
     document.title = 'ParkSensei — Autonomous Robot HUD'
   }, [])
+
+  // Auto-open Verification Gate Modal when robot enters review mode
+  useEffect(() => {
+    if (robot?.mode === 'review' && (robot?.review_vehicles?.length || 0) > 0) {
+      setReviewModalOpen(true)
+    }
+  }, [robot?.mode, robot?.review_vehicles])
 
   // Keep body margin clean
   useEffect(() => {
@@ -189,6 +198,51 @@ export default function HudPage() {
         autoRunning={robot?.mode === 'auto' || robot?.mode === 'review'}
         estopActive={!!robot?.estop}
         onChanged={refresh}
+      />
+
+      {/* Human Verification Gate Pop-up Modal */}
+      <ReviewModal
+        open={reviewModalOpen}
+        onOpenChange={setReviewModalOpen}
+        vehicles={vehicles}
+        reviewVehicles={robot?.review_vehicles || []}
+        reviewConfirmed={robot?.review_confirmed || []}
+        reviewTicketed={robot?.review_ticketed || []}
+        reviewDismissed={robot?.review_dismissed || []}
+        reviewReady={!!robot?.review_ready}
+        printingId={printingId}
+        onConfirm={async (vehicle) => {
+          await confirmParkingReview(vehicle.id)
+          await refresh()
+        }}
+        onDismiss={async (vehicle) => {
+          try {
+            await dismissParkingReview(vehicle.id)
+            await refresh()
+            toast.info(`Vehicle ${vehicle.id} dismissed.`)
+          } catch (err) {
+            toast.error(err.message || 'Could not dismiss vehicle.')
+          }
+        }}
+        onResume={async () => {
+          try {
+            await autoResume()
+            refresh()
+            toast.success('Patrol resumed.')
+          } catch (error) {
+            toast.error(error.message || 'Could not resume patrol.')
+          }
+        }}
+        onPrint={async (vehicle, plate) => {
+          setPrintingId(vehicle.id)
+          try {
+            const result = await printViolation(vehicle.id, plate)
+            refresh()
+            return result
+          } finally {
+            setPrintingId(null)
+          }
+        }}
       />
     </div>
   )

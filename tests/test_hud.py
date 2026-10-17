@@ -98,9 +98,13 @@ def test_ticket_test_print_uses_simulated_printer(monkeypatch, tmp_path):
     assert len(pngs) == 1 and pngs[0].stat().st_size > 1000
 
 
-def test_stream_headers_without_consuming_body():
+def test_stream_headers_without_consuming_body(monkeypatch):
     import asyncio
 
+    monkeypatch.setattr(
+        "app.services.camera.camera_manager.get_latest_jpeg",
+        lambda: b"\xff\xd8\xff\xe0testjpeg",
+    )
     from app.api.parking_routes import stream
 
     resp = stream()

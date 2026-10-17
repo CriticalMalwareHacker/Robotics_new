@@ -104,21 +104,24 @@ def hud_state():
         cw, ch = cfg.get("image_size", [1280, 720])
         fw, fh = meta.get("width") or cw, meta.get("height") or ch
         scale = (fw / cw, fh / ch)
-        for s in load_slots():
+        active_slots = m.get("last_slots") or load_slots()
+        for s in active_slots:
+            slot_poly_px = s.polygon_px if getattr(s, "polygon_px", None) else _cm_to_px(s.polygon, h_inv, scale)
             slots.append({"name": s.slot_id,
-                          "polygon_px": _cm_to_px(s.polygon, h_inv, scale),
+                          "polygon_px": slot_poly_px,
                           "restricted": s.restricted})
         dets = m.get("last_detections", []) if isinstance(m, dict) else []
         by_id = {r.vehicle_id: r for r in (analysis.results if analysis else [])}
         for d in dets:
             r = by_id.get(d.vehicle_id)
+            det_poly_px = d.polygon_px if getattr(d, "polygon_px", None) else _cm_to_px(d.polygon, h_inv, scale)
             vehicles.append({
                 "id": d.vehicle_id,
                 "slot": r.slot_id if r else None,
                 "valid": (r.violation == ViolationType.LEGAL) if r else None,
                 "violation": r.violation.value if r else None,
                 "confidence": d.confidence,
-                "polygon_px": _cm_to_px(d.polygon, h_inv, scale),
+                "polygon_px": det_poly_px,
                 "plate": d.plate_hint,
                 "plate_conf": d.plate_conf,
             })

@@ -27,6 +27,7 @@ _state: dict = {
     "thread": None,
     "last_analysis": None,
     "last_detections": [],
+    "last_slots": [],
     "debounced": {},
     "analyses": 0,
 }
@@ -68,26 +69,60 @@ def _loop(provider: Callable[[], np.ndarray | None], interval_s: float) -> None:
     while _state["running"]:
         try:
             frame = provider()
-            dets = detector.detect(frame) if frame is not None else []
-            if frame is not None and dets and isinstance(detector, ClassicalDetector):
-                # OCR runs locally on each detected vehicle crop. Any OCR error
-                # degrades to no plate, never to a guessed ticket value.
+            dets: list[Detection] = []
+            active_slots: list[Slot] = slots
+            analysis = None
+
+            if frame is not None:
+                # 1. Try dynamic marker line & card detection
                 try:
-                    from .plate_reader import read_vehicle_plates
-                    dets = read_vehicle_plates(frame, dets, detector.h,
-                                              detector.calib_size)
-                except Exception as exc:
-                    logger.warning("plate OCR unavailable for this frame: %s", exc)
-            analysis = analyze_frame(dets, slots)
-            flags = {r.vehicle_id: deb.update(r.vehicle_id,
-                                              r.violation.value != "LEGAL")
+                    from .dynamic_detector import (
+                        detect_marker_lines_and_bays,
+                        detect_vehicle_cards,
+                        analyze_dynamic_parking,
+                    )
+                    bays, lines = detect_marker_lines_and_bays(frame)
+                    card_dets = detect_vehicle_cards(frame)
+
+                    if card_dets or bays:
+                        if card_dets:
+                            try:
+                                from .plate_reader import read_vehicle_plates
+                                card_dets = read_vehicle_plates(frame, card_dets)
+                            except Exception as exc:
+                                logger.debug("plate OCR: %s", exc)
+
+                        analysis = analyze_dynamic_parking(card_dets, bays, lines)
+                        dets = card_dets
+                        active_slots = bays
+                except Exception as dyn_err:
+                    logger.debug("dynamic detector error: %s", dyn_err)
+
+                # 2. Fallback to classical detector if dynamic sees nothing
+                if analysis is None:
+                    dets = detector.detect(frame)
+                    if dets and isinstance(detector, ClassicalDetector):
+                        try:
+                            from .plate_reader import read_vehicle_plates
+                            dets = read_vehicle_plates(frame, dets, detector.h, detector.calib_size)
+                        except Exception as exc:
+                            logger.warning("plate OCR unavailable for this frame: %s", exc)
+                    active_slots = slots
+                    analysis = analyze_frame(dets, active_slots)
+            else:
+                analysis = analyze_frame([], slots)
+
+            flags = {r.vehicle_id: deb.update(r.vehicle_id, r.violation.value != "LEGAL")
                      for r in analysis.results}
+
             with _lock:
                 prev = dict(_state["debounced"])
                 _state["last_analysis"] = analysis
                 _state["last_detections"] = list(dets)
+                _state["last_slots"] = list(active_slots)
                 _state["debounced"] = flags
                 _state["analyses"] += 1
+
             by_id = {r.vehicle_id: r for r in analysis.results}
             for vid, active in flags.items():
                 if active and not prev.get(vid):  # rising edge only
@@ -131,4 +166,5 @@ def status() -> dict:
             "debounced": dict(_state["debounced"]),
             "last_analysis": last,
             "last_detections": list(_state["last_detections"]),
+            "last_slots": list(_state["last_slots"]),
         }
