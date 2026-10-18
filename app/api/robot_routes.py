@@ -239,8 +239,6 @@ def _auto_loop(baseline_analyses: int) -> None:
 
         if vision_ready:
             flags = vision.get("debounced", {})
-            _suppressed_violations.intersection_update(
-                vid for vid, active in flags.items() if active)
             violations = sorted(vid for vid, active in flags.items()
                                 if active and vid not in _suppressed_violations)
             if violations:
@@ -288,6 +286,7 @@ def _auto_loop(baseline_analyses: int) -> None:
             blocked_turns += 1
             if blocked_turns > 4:
                 _state["mode"] = "blocked"
+                _state["review_vehicles"] = []
                 _state["last_error"] = "Obstacle still detected after multiple escape attempts; patrol stopped."
                 events.log("warn", _state["last_error"])
                 return
@@ -520,6 +519,10 @@ def auto_start():
     if _auto_thread and _auto_thread.is_alive():
         _auto_thread.join(timeout=0.5)
     _suppressed_violations.clear()
+    # Baseline existing active violations so robot doesn't instantly halt on frame 0
+    debounced = monitor.status().get("debounced", {})
+    _suppressed_violations.update(vid for vid, active in debounced.items() if active)
+
     _state["mode"] = "auto"
     _state["review_vehicles"] = []
     _state["review_confirmed"] = []
@@ -560,19 +563,26 @@ def auto_resume():
     if _state["estop"]:
         raise HTTPException(status_code=409,
                             detail="Emergency stop is active. Clear it first.")
-    if _state["mode"] != "review":
+    if _state["mode"] not in {"review", "blocked"}:
+        if _state["mode"] == "auto":
+            return {"status": "auto_resumed"}
         raise HTTPException(status_code=409,
-                            detail="Patrol is not paused for review.")
-    confirmed_or_dismissed = set(_state["review_confirmed"]) | set(_state.get("review_dismissed", []))
-    ticketed_or_dismissed = set(_state["review_ticketed"]) | set(_state.get("review_dismissed", []))
-    if not (set(_state["review_vehicles"]).issubset(confirmed_or_dismissed) and
-            set(_state["review_vehicles"]).issubset(ticketed_or_dismissed)):
-        raise HTTPException(status_code=409,
-                            detail="Confirm & ticket or dismiss each review vehicle before continuing.")
+                            detail="Patrol is not paused for review or blocked.")
+
+    # Any vehicles in review not confirmed/ticketed or dismissed are treated as operator-bypassed
+    unreviewed = [
+        vid for vid in _state.get("review_vehicles", [])
+        if vid not in _state.get("review_confirmed", []) and vid not in _state.get("review_dismissed", [])
+    ]
+    if unreviewed:
+        _state.setdefault("review_dismissed", []).extend(unreviewed)
+        events.log("info", f"Bypassed review for vehicle(s): {', '.join(unreviewed)}")
+
     if _link() == "offline":
         raise HTTPException(status_code=503,
                             detail=arduino_serial.last_error or "No reply from the Arduino.")
-    _suppressed_violations.update(_state["review_vehicles"])
+
+    _suppressed_violations.update(_state.get("review_vehicles", []))
     _state["review_vehicles"] = []
     _state["review_confirmed"] = []
     _state["review_ticketed"] = []
@@ -587,5 +597,5 @@ def auto_resume():
         baseline = monitor.status().get("analyses_served", 0)
         _auto_thread = threading.Thread(target=_auto_loop, args=(baseline,), daemon=True)
         _auto_thread.start()
-    events.log("info", "Parking reviewed; auto patrol resumed.")
+    events.log("info", "Autonomous patrol resumed.")
     return {"status": "auto_resumed"}

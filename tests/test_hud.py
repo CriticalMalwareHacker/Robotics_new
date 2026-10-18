@@ -141,3 +141,38 @@ def test_robot_sensors_telemetry(monkeypatch):
     assert hud_data["devices"]["ultrasonic"] == "ok"
     assert hud_data["devices"]["ir"] == "ok"
 
+
+def test_auto_resume_bypass_and_blocked_recovery(monkeypatch):
+    """Verify that auto_resume cleanly bypasses unreviewed targets and recovers from blocked."""
+    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.setenv("ROBOT_MODE", "mock")
+    from app.api.robot_routes import _state, _suppressed_violations
+
+    client.post("/api/robot/estop/clear")
+
+    # 1. Test bypass from review mode
+    _state["mode"] = "review"
+    _state["review_vehicles"] = ["CAR-99"]
+    _state["review_confirmed"] = []
+    _state["review_ticketed"] = []
+    _state["review_dismissed"] = []
+
+    res = client.post("/api/robot/auto/resume")
+    assert res.status_code == 200
+    assert res.json()["status"] == "auto_resumed"
+    assert _state["mode"] == "auto"
+    assert "CAR-99" in _suppressed_violations
+    assert _state["review_vehicles"] == []
+
+    # 2. Test recovery from blocked mode
+    _state["mode"] = "blocked"
+    _state["last_error"] = "Obstacle detected"
+    res_blocked = client.post("/api/robot/auto/resume")
+    assert res_blocked.status_code == 200
+    assert _state["mode"] == "auto"
+    assert _state["last_error"] is None
+
+    # Clean up
+    client.post("/api/robot/auto/stop")
+
+

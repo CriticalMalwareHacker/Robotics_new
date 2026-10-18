@@ -228,9 +228,20 @@ export default function ReviewModal({
                 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950/60'
                 : 'bg-muted/60 text-muted-foreground hover:bg-muted'
             }`}
-            onClick={() => {
-              onResume?.()
-              onOpenChange(false)
+            onClick={async () => {
+              try {
+                if (!reviewReady && onDismiss) {
+                  for (const v of displayVehicles) {
+                    if (!reviewConfirmed.includes(v.id) && !reviewDismissed.includes(v.id)) {
+                      try { await onDismiss(v) } catch {}
+                    }
+                  }
+                }
+                onOpenChange(false)
+                await onResume?.()
+              } catch (err) {
+                toast.error(err.message || 'Could not resume patrol.')
+              }
             }}
           >
             <Play className="mr-2 h-4 w-4 fill-current" />

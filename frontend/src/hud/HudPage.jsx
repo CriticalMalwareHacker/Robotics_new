@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Toaster, toast } from 'sonner'
 import { WifiOff } from 'lucide-react'
 import { autoResume, confirmParkingReview, dismissParkingReview, estopClear, printViolation, testPrint } from './api'
@@ -29,6 +29,8 @@ export default function HudPage() {
   const [printing, setPrinting] = useState(false)
   const [printingId, setPrintingId] = useState(null)
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
+  const prevModeRef = useRef(null)
+  const lastOpenedKeyRef = useRef('')
 
   const toggleTheme = () => {
     setTheme((t) => {
@@ -65,12 +67,23 @@ export default function HudPage() {
     document.title = 'ParkSensei — Autonomous Robot HUD'
   }, [])
 
-  // Auto-open Verification Gate Modal when robot enters review mode
+  // Auto-open Verification Gate Modal strictly on transition into review mode or when target list changes
   useEffect(() => {
-    if (robot?.mode === 'review' && (robot?.review_vehicles?.length || 0) > 0) {
-      setReviewModalOpen(true)
+    const isReview = robot?.mode === 'review'
+    const vehiclesList = robot?.review_vehicles || []
+    const currentKey = `${robot?.mode}:${vehiclesList.slice().sort().join(',')}`
+
+    if (isReview && vehiclesList.length > 0) {
+      if (prevModeRef.current !== 'review' || currentKey !== lastOpenedKeyRef.current) {
+        setReviewModalOpen(true)
+        lastOpenedKeyRef.current = currentKey
+      }
+    } else if (!isReview) {
+      setReviewModalOpen(false)
+      lastOpenedKeyRef.current = ''
     }
-  }, [robot?.mode, robot?.review_vehicles])
+    prevModeRef.current = robot?.mode
+  }, [robot?.mode, (robot?.review_vehicles || []).join(',')])
 
   // Keep body margin clean
   useEffect(() => {
