@@ -172,18 +172,35 @@ def ticket_test_print():
     from app.services.printer import print_label
     from backend.services.parking.ticket import (
         build_ticket_image,
+        generate_annotated_evidence,
         next_number,
         save_ticket_png,
     )
+    from backend.services.parking.models import Slot, Detection
 
     number = next_number()
+    frame_bgr = None
+    try:
+        from app.services.camera import camera_manager
+        jpeg = camera_manager.get_latest_jpeg()
+        if jpeg is not None:
+            import cv2
+            import numpy as np
+            frame_bgr = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+    except Exception:
+        pass
+
+    sample_bays = [Slot(slot_id="A3", polygon=[[150.0, 150.0], [280.0, 150.0], [290.0, 320.0], [140.0, 320.0]])]
+    sample_det = Detection(vehicle_id="TEST-001", polygon=[[170.0, 180.0], [260.0, 180.0], [265.0, 300.0], [165.0, 300.0]], angle_deg=90.0, confidence=0.95)
+    evidence_url = generate_annotated_evidence(frame_bgr, sample_bays, sample_det, "A3", "OUTSIDE_SLOT", "MH01AB1234", number)
+
     image = build_ticket_image(number, datetime.now().strftime("%Y-%m-%d %H:%M"),
                                plate="MH01AB1234", vehicle="TEST-001",
                                slot="A3", violation="OUTSIDE_SLOT")
     image_url = save_ticket_png(image, number)
     ok, message = print_label(image)
     record = {"number": number, "status": "printed" if ok else "failed",
-              "message": message, "image_url": image_url,
+              "message": message, "image_url": image_url, "evidence_url": evidence_url,
               "plate": "MH01AB1234", "vehicle": "TEST-001", "slot": "A3",
               "violation": "OUTSIDE_SLOT",
               "time": datetime.now().isoformat(timespec="seconds")}
@@ -198,6 +215,17 @@ def ticket_test_print():
 def ticket_history():
     """Return saved parking tickets, newest first."""
     return get_history()
+
+
+@router.get("/api/ticket/{number}")
+def get_ticket_by_number(number: str):
+    """Retrieve details and photo evidence for a single citation record."""
+    history = get_history()
+    clean_num = number.strip().upper()
+    ticket = next((t for t in history if str(t.get("number", "")).upper() == clean_num), None)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Citation record not found.")
+    return ticket
 
 
 @router.post("/api/ticket/violation")
@@ -229,19 +257,47 @@ def ticket_violation(request: ViolationTicketRequest):
     if result.violation == ViolationType.LEGAL:
         raise HTTPException(status_code=409, detail="This car is currently parked legally; no ticket was created.")
 
+    # Retrieve current optical frame for annotated photo evidence
+    frame_bgr = None
+    try:
+        from app.services.camera import camera_manager
+        jpeg = camera_manager.get_latest_jpeg()
+        if jpeg is not None:
+            import cv2
+            import numpy as np
+            frame_bgr = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+    except Exception:
+        pass
+
     from app.services.printer import print_label
-    from backend.services.parking.ticket import build_ticket_image, next_number, save_ticket_png
+    from backend.services.parking.ticket import (
+        build_ticket_image,
+        generate_annotated_evidence,
+        next_number,
+        save_ticket_png,
+    )
 
     number = next_number()
     now = datetime.now()
+    active_bays = current.get("last_slots", [])
+    evidence_url = generate_annotated_evidence(
+        frame_bgr,
+        active_bays,
+        det,
+        result.slot_id or "Unknown",
+        result.violation.value,
+        plate,
+        number,
+    )
+
     image = build_ticket_image(number, now.strftime("%Y-%m-%d %H:%M"), plate=plate,
                                vehicle=request.vehicle_id, slot=result.slot_id or "Unknown",
                                violation=result.violation.value)
     image_url = save_ticket_png(image, number)
     ok, message = print_label(image)
     record = {"number": number, "status": "printed" if ok else "failed",
-              "message": message, "image_url": image_url, "plate": plate,
-              "vehicle": request.vehicle_id, "slot": result.slot_id or "Unknown",
+              "message": message, "image_url": image_url, "evidence_url": evidence_url,
+              "plate": plate, "vehicle": request.vehicle_id, "slot": result.slot_id or "Unknown",
               "violation": result.violation.value, "time": now.isoformat(timespec="seconds")}
     record_ticket(record)
     if ok and _robot_state.get("mode") == "review" and request.vehicle_id in _robot_state.get("review_vehicles", []):

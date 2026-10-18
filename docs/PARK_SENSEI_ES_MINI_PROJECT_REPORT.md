@@ -67,9 +67,11 @@ The system follows a distributed master-slave embedded architecture:
    - Over a 115200-baud USB serial link, the Pi issues leased movement commands (`MOVE <Direction> <PWM> <Duration_MS>`).
    - The Arduino parses incoming ASCII commands, sets L293D directional channels via `AFMotor`, and enforces a hardware watchdog timer (100–500 ms). If serial communication drops, all motors stop immediately to prevent runaway.
 
-3. **On-Board Physical Ticketing:**
-   - Once a violation is confirmed, the Pi rasterizes a standardized 384 px monochrome citation image containing the date, violation type, bay ID, and license plate.
-   - The rasterized image is converted into ESC/POS binary printer commands (`GS v 0`) and transmitted to the thermal printer via raw USB endpoint (`/dev/usb/lp0`).
+3. **On-Board Physical Ticketing with Scannable QR Verification:**
+   - Once a violation is confirmed, the Pi rasterizes a standardized 384 px monochrome citation image containing the date, violation type, bay ID, license plate, and a high-contrast QR verification code.
+   - **Real Scannable QR Code:** Scanning the bottom of the thermal receipt with any smartphone camera instantly directs the evaluator or driver to the digital evidence portal (`/history?ticket=<number>`).
+   - The rasterized image is converted into ESC/POS binary raster printer commands (`GS v 0`) and transmitted to the thermal printer via raw USB endpoint (`/dev/usb/lp0`).
+   - Simultaneously, an annotated photo evidence snapshot is generated—drawing bay bounds (red violation bay, green compliant bays), vehicle bounding quadrilateral, license plate badge, and cyber HUD telemetry banners—and persisted alongside the citation record in SQLite and JSON databases. Evaluators can review this evidence gallery at `/history`.
 
 ```
 ┌────────────────────────────────────────────────────────┐

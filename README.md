@@ -28,17 +28,28 @@ The system pairs a **Raspberry Pi 5** (hosting computer vision, plate OCR, and a
    - Categorizes parking states into: `LEGAL`, `STRADDLING` (line crossing), `WRONG_ORIENTATION` (relative to bay axis), and `OUTSIDE_SLOT`.
 2. **Offline License Plate Recognition (OCR):**
    - On-device CPU inference using **RapidOCR** (ONNX Runtime) to extract handwritten and printed vehicle registration numbers (e.g. `MH47AX5364`).
-3. **Physical Thermal Citation Issuance:**
+3. **Physical Thermal Citation with Scannable QR Verification:**
    - Onboard **58 mm Thermal Receipt Printer** (ESC/POS protocol, 384 dots/line).
    - Generates high-contrast monochrome violation notices complete with date, time, vehicle ID, plate number, bay ID, and violation reason.
-4. **Autonomous Patrol & Smart Obstacle Avoidance:**
+   - **Real Scannable QR Code:** Centered 148×148 px high-contrast QR code at the bottom of the physical ticket. Scanning with any smartphone camera opens the digital ticket record and vehicle photo evidence portal (`/history?ticket=...`).
+   - Built with a 36 px bottom tear buffer to prevent physical printer cutters or tear bars from clipping the QR code or disclaimer.
+4. **Automated Photographic Evidence Capture:**
+   - Whenever a citation is issued, the system captures an optical camera snapshot and overlays:
+     - **Bay lines:** Translucent red highlight for the violated bay, green boundaries for compliant bays.
+     - **Vehicle quad:** Neon yellow/orange bounding quad with corner vertex markers and vehicle license badge.
+     - **Cyber HUD banners:** Top and bottom telemetry bars displaying ticket number, timestamp, bay ID, and violation type.
+   - Saved as high-definition JPEG (`evidence_<number>.jpg`) and dual-persisted to SQLite database (`ticket_records` table) and JSON history.
+5. **Photo Evidence Gallery (`/history`):**
+   - Evaluators and operators can navigate to `/history` on mobile or desktop to explore all issued citations.
+   - Includes real-time plate/ticket search, infraction filter chips, and an interactive **Evidence Modal** comparing the optical camera evidence snapshot with the physical thermal receipt.
+6. **Autonomous Patrol & Smart Obstacle Avoidance:**
    - Multi-sensor safety stack: **HC-SR04 ultrasonic rangefinder** and **HW-201 active-low IR proximity sensor**.
    - **Non-blocking sensor executor:** 0.25s hard timeout ensures degraded/unconnected sensors never block the application or cause timeouts.
    - Automatic reverse-before-turn clearance (`MOVE B 250ms`) to prevent chassis scraping, followed by timed escape pivots.
-5. **Human-in-the-Loop Verification Gate:**
+7. **Human-in-the-Loop Verification Gate:**
    - Robot halts patrol automatically upon detecting violations.
    - Interactive modal pops up on the mobile HUD allowing operator verification, license plate editing/correction, citation printing, or dismissal.
-6. **Mobile-First Cyber-Tactical Heads-Up Display (HUD):**
+8. **Mobile-First Cyber-Tactical Heads-Up Display (HUD):**
    - Self-hosted on the Raspberry Pi local network (`10.42.0.1:8000/hud`).
    - Live video stream with dynamic vector polygon overlays, telemetry health badges, touch D-pad manual steering, and instantaneous emergency stop.
 

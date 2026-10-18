@@ -190,8 +190,12 @@ ParkSensei logo, Parking monitor label, Open live HUD card, Ticket history card 
 - Manual slide sheet: direction pad, arrows/WASD, speed slider, release-to-stop.
 - E-stop banner, toast confirmations/errors, latest100 in-memory event log with severity/time.
 
-### Ticket history /history
-Newest-first number/status, plate, vehicle ID, bay, violation, local date/time and View ticket. Refresh, loading/error/retry, empty states.
+### Photo Evidence Gallery & Ticket History (`/history`)
+- **Visual Evidence Cards:** Newest-first citation cards displaying high-contrast thumbnail previews of both the annotated camera evidence photo (with bay outlines, vehicle quad, and HUD overlays) and the physical thermal receipt.
+- **Instant Search & Filters:** Live search by plate number, ticket ID, or vehicle ID; filter pills for infractions (`ALL`, `STRADDLING`, `OUTSIDE_SLOT`, `WRONG_ORIENTATION`, `NO_PARKING_ZONE`).
+- **Interactive Evidence Modal:** Evaluators can inspect citations in a full-screen glassmorphic dialog with side-by-side or tabbed views (`PHOTO EVIDENCE` vs `THERMAL RECEIPT`), authentic license plate badge, and direct download links.
+- **Deep-Link Auto Open:** When a user scans the printed QR code on a physical thermal ticket, the smartphone browser navigates to `/history?ticket=<number>`, which automatically resolves and displays the full-screen digital evidence record.
+- **Dual Persistence:** Tickets and evidence URLs are persisted to SQLite database (`ticket_records` table) and mirrored to `app/database/parking_tickets.json` for persistence across restarts.
 
 Freshness semantics: API polling, stream and overlays have distinct timing. Overlay delayed refers to HUD data age; validate that geometry sits on live mat. Printer badge does not prove paper was emitted. Sensor “OK” means read at least once, not validated range.
 
@@ -205,7 +209,10 @@ HUD/ticket:
 - GET /api/hud/state composite.
 - POST /api/ticket/test-print.
 - GET /api/ticket/history.
+- GET /api/ticket/{number} direct citation record lookup by ticket number.
 - POST /api/ticket/violation.
+- GET /history and /hud direct SPA routes serving index.html.
+- GET /evidence/* and /generated_labels/* static assets.
 
 Parking:
 - POST /api/parking/analyze synthetic/current detections in cm.

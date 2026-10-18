@@ -15,7 +15,11 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+import cv2
+import numpy as np
+
 from app.services.printer import THERMAL_PRINT_WIDTH_PX
+from .models import Detection, Slot
 
 W = THERMAL_PRINT_WIDTH_PX
 MARGIN = 14
@@ -27,6 +31,33 @@ _history_path = Path("app/database/parking_tickets.json")
 
 def get_history() -> list[dict]:
     """Return saved parking tickets, newest first."""
+    # 1. Try reading from SQLite database table
+    try:
+        from infrastructure.database import SessionLocal, init_db
+        from infrastructure.database_models import TicketRecord
+        init_db()
+        with SessionLocal() as session:
+            rows = session.query(TicketRecord).order_by(TicketRecord.id.desc()).all()
+            if rows:
+                return [
+                    {
+                        "number": r.number,
+                        "plate": r.plate,
+                        "vehicle": r.vehicle_id,
+                        "slot": r.slot_id,
+                        "violation": r.violation,
+                        "status": r.status,
+                        "message": r.message,
+                        "image_url": r.image_url,
+                        "evidence_url": r.evidence_url,
+                        "time": r.created_at.isoformat() if r.created_at else "",
+                    }
+                    for r in rows
+                ]
+    except Exception:
+        pass
+
+    # 2. Fallback to JSON history file
     try:
         data = json.loads(_history_path.read_text(encoding="utf-8"))
         return list(reversed(data)) if isinstance(data, list) else []
@@ -35,8 +66,9 @@ def get_history() -> list[dict]:
 
 
 def record_ticket(ticket: dict) -> dict:
-    """Persist a ticket record so history survives backend restarts."""
+    """Persist a ticket record to both JSON and SQLite database so history survives restarts."""
     with _lock:
+        # JSON file persistence
         try:
             existing = json.loads(_history_path.read_text(encoding="utf-8"))
             if not isinstance(existing, list):
@@ -47,7 +79,116 @@ def record_ticket(ticket: dict) -> dict:
         _history_path.parent.mkdir(parents=True, exist_ok=True)
         _history_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
         LAST["ticket"] = ticket
+
+        # SQLite database persistence
+        try:
+            from infrastructure.database import SessionLocal, init_db
+            from infrastructure.database_models import TicketRecord
+            init_db()
+            with SessionLocal() as session:
+                rec = TicketRecord(
+                    number=ticket.get("number", ""),
+                    plate=ticket.get("plate", ""),
+                    vehicle_id=ticket.get("vehicle"),
+                    slot_id=ticket.get("slot"),
+                    violation=ticket.get("violation", ""),
+                    status=ticket.get("status", "printed"),
+                    message=ticket.get("message"),
+                    image_url=ticket.get("image_url"),
+                    evidence_url=ticket.get("evidence_url"),
+                )
+                session.add(rec)
+                session.commit()
+        except Exception:
+            pass
     return ticket
+
+
+def generate_annotated_evidence(
+    frame_bgr: np.ndarray | None,
+    bays: list[Slot],
+    vehicle_det: Detection | None,
+    slot_id: str | None,
+    violation_name: str,
+    plate: str,
+    ticket_number: str,
+) -> str:
+    """Create an annotated photographic evidence snapshot showing bay lines and violating vehicle.
+    
+    Saves to generated_labels/evidence_<number>.jpg and returns its web-accessible URL.
+    """
+    if frame_bgr is None or frame_bgr.size == 0:
+        # High-contrast fallback canvas if optical camera is unavailable
+        img = np.full((360, 640, 3), 36, dtype=np.uint8)
+        # Draw placeholder mat
+        cv2.rectangle(img, (80, 80), (560, 310), (220, 220, 220), -1)
+        cv2.putText(img, "OFFLINE SENSOR SNAPSHOT", (180, 195),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (50, 50, 50), 2, cv2.LINE_AA)
+    else:
+        img = frame_bgr.copy()
+
+    fh, fw = img.shape[:2]
+    overlay = img.copy()
+
+    # 1. Overlay Parking Bays (Green for regular, Red for infraction bay)
+    violated_slot = (slot_id or "").upper().strip()
+    for bay in bays:
+        pts = np.asarray(bay.polygon_px or bay.polygon, dtype=np.int32)
+        if len(pts) >= 3:
+            is_violated = (bay.slot_id.upper() == violated_slot)
+            if is_violated:
+                cv2.fillPoly(overlay, [pts], (0, 0, 170))
+                cv2.polylines(img, [pts], True, (0, 0, 255), 2, cv2.LINE_AA)
+            else:
+                cv2.polylines(img, [pts], True, (0, 180, 0), 1, cv2.LINE_AA)
+
+            top_pt = min(pts, key=lambda p: p[1])
+            tag = f"BAY {bay.slot_id}" + (" [INFRACTION]" if is_violated else "")
+            color = (0, 0, 255) if is_violated else (0, 220, 0)
+            cv2.putText(img, tag, (int(top_pt[0]), max(20, int(top_pt[1] - 4))),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.42, color, 1, cv2.LINE_AA)
+
+    # Blend translucent bay fills
+    cv2.addWeighted(overlay, 0.35, img, 0.65, 0, img)
+
+    # 2. Overlay Violating Vehicle Bounding Polygon
+    if vehicle_det and (vehicle_det.polygon_px or vehicle_det.polygon):
+        v_pts = np.asarray(vehicle_det.polygon_px or vehicle_det.polygon, dtype=np.int32)
+        if len(v_pts) >= 3:
+            # Neon yellow/orange bounding box with corner vertices
+            cv2.polylines(img, [v_pts], True, (0, 220, 255), 3, cv2.LINE_AA)
+            for pt in v_pts:
+                cv2.circle(img, (int(pt[0]), int(pt[1])), 4, (0, 220, 255), -1, cv2.LINE_AA)
+
+            top_v = min(v_pts, key=lambda p: p[1])
+            badge_text = f"{plate.upper()} [{violation_name.upper()}]"
+            (tw, th), _ = cv2.getTextSize(badge_text, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+            bx = max(4, min(fw - tw - 12, int(top_v[0] - tw / 2)))
+            by = max(44, int(top_v[1] - 8))
+            cv2.rectangle(img, (bx - 4, by - th - 4), (bx + tw + 4, by + 4), (10, 10, 10), -1)
+            cv2.rectangle(img, (bx - 4, by - th - 4), (bx + tw + 4, by + 4), (0, 220, 255), 1)
+            cv2.putText(img, badge_text, (bx, by), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+
+    # 3. Top Cyber HUD Banner
+    cv2.rectangle(img, (0, 0), (fw, 32), (12, 16, 24), -1)
+    cv2.line(img, (0, 32), (fw, 32), (0, 220, 255), 1)
+    header_l = f"PARKSENSEI AI PATROL | CITATION #{ticket_number}"
+    header_r = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cv2.putText(img, header_l, (10, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (0, 220, 255), 1, cv2.LINE_AA)
+    (rw, _), _ = cv2.getTextSize(header_r, cv2.FONT_HERSHEY_SIMPLEX, 0.40, 1)
+    cv2.putText(img, header_r, (fw - rw - 10, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (200, 210, 225), 1, cv2.LINE_AA)
+
+    # 4. Bottom Cyber HUD Banner
+    cv2.rectangle(img, (0, fh - 28), (fw, fh), (12, 16, 24), -1)
+    cv2.line(img, (0, fh - 28), (fw, fh - 28), (50, 60, 75), 1)
+    footer_l = f"PLATE: {plate.upper()} | BAY: {slot_id or 'UNKNOWN'} | INFRACTION: {violation_name.upper()}"
+    cv2.putText(img, footer_l, (10, fh - 9), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255, 255, 255), 1, cv2.LINE_AA)
+
+    outdir = Path("generated_labels")
+    outdir.mkdir(exist_ok=True)
+    outname = f"evidence_{ticket_number.replace('/', '-')}.jpg"
+    cv2.imwrite(str(outdir / outname), img, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+    return f"/generated_labels/{outname}"
 
 
 LAST: dict = {"ticket": (get_history()[0] if get_history() else None)}
@@ -119,7 +260,7 @@ def build_ticket_image(number: str, when: str, plate: str, vehicle: str,
     }
 
     # Initial canvas with generous vertical room
-    img = Image.new("RGB", (W, 600), "white")
+    img = Image.new("RGB", (W, 750), "white")
     d = ImageDraw.Draw(img)
 
     y = 6
@@ -177,22 +318,47 @@ def build_ticket_image(number: str, when: str, plate: str, vehicle: str,
     d.text(((W - vn_w) / 2, y + 23), v_name, fill="white", font=fonts["violation"])
     y += v_box_h + 12
 
-    # 5. QR Code for verification
+    # 5. Scannable High-Contrast QR Code for Verification & Digital Photo Evidence Portal
+    portal_base = os.getenv("TICKET_PORTAL_BASE_URL", "http://10.42.0.1:8000").rstrip("/")
+    target_url = f"{portal_base}/history?ticket={number}"
+
     try:
         import qrcode
-        qr = qrcode.QRCode(version=1, box_size=3, border=1)
-        qr.add_data(f"http://10.42.0.1:8000/history?ticket={number}")
+        qr = qrcode.QRCode(
+            version=None,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=4,
+            border=2,
+        )
+        qr.add_data(target_url)
         qr.make(fit=True)
         qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
         qr_w, qr_h = qr_img.size
         qr_x = int((W - qr_w) / 2)
-        img.paste(qr_img, (qr_x, y))
-        y += qr_h + 4
 
-        verify_text = "SCAN TO VERIFY RECORD"
-        vvw = d.textlength(verify_text, font=fonts["small_bold"])
-        d.text(((W - vvw) / 2, y), verify_text, fill="black", font=fonts["small_bold"])
-        y += 18
+        # Enclosing Verification Frame
+        qr_box_pad = 8
+        d.rectangle(
+            [qr_x - qr_box_pad, y, qr_x + qr_w + qr_box_pad, y + qr_h + 38],
+            outline="black",
+            width=2,
+        )
+        # Inverted mini-banner
+        d.rectangle(
+            [qr_x - qr_box_pad, y, qr_x + qr_w + qr_box_pad, y + 18],
+            fill="black",
+        )
+        q_tag = "DIGITAL EVIDENCE & VERIFICATION"
+        q_tw = d.textlength(q_tag, font=fonts["small_bold"])
+        d.text(((W - q_tw) / 2, y + 3), q_tag, fill="white", font=fonts["small_bold"])
+
+        img.paste(qr_img, (qr_x, y + 20))
+        y += qr_h + 24
+
+        scan_info = "CAMERA SCAN OPENS PHOTO EVIDENCE"
+        si_w = d.textlength(scan_info, font=fonts["small_bold"])
+        d.text(((W - si_w) / 2, y), scan_info, fill="black", font=fonts["small_bold"])
+        y += 22
     except Exception:
         # Graceful fallback if qrcode is not present
         pass
@@ -210,8 +376,8 @@ def build_ticket_image(number: str, when: str, plate: str, vehicle: str,
     d2_w = d.textlength(disc2, font=fonts["small"])
     d.text(((W - d2_w) / 2, y), disc2, fill="black", font=fonts["small"]); y += 22
 
-    # 7. Generous bottom buffer so the physical tear bar / cutter never slices text
-    final_h = y + 14
+    # 7. Generous bottom buffer so the physical tear bar / cutter never slices text or QR
+    final_h = y + 36
     final_img = img.crop((0, 0, W, final_h))
 
     # Outer border frame

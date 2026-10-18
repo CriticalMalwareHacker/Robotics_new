@@ -31,12 +31,20 @@ Path("generated_labels").mkdir(exist_ok=True)
 app.mount("/generated-images", StaticFiles(directory="diagram_images"), name="generated-images")
 app.mount("/generated_labels", StaticFiles(directory="generated_labels"), name="generated_labels")
 app.mount("/generated-labels", StaticFiles(directory="generated_labels"), name="generated-labels")
+app.mount("/evidence", StaticFiles(directory="generated_labels"), name="evidence")
 
 # When a production Vite build is present, serve it from the same origin as the
-# API. This lets the Pi host the complete UI locally for offline demos. Keep
-# this catch-all mount last so the API and generated-file routes take priority.
+# API. This lets the Pi host the complete UI locally for offline demos.
 frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-if (frontend_dist / "index.html").is_file():
+index_html = frontend_dist / "index.html"
+if index_html.is_file():
+    from fastapi.responses import FileResponse
+
+    @app.get("/history")
+    @app.get("/hud")
+    def serve_spa():
+        return FileResponse(index_html)
+
     app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
 
 
