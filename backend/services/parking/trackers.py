@@ -163,6 +163,15 @@ class VehicleTracker:
 
         return results
 
+    def sync_plate_hints(self, detections: list[Detection]) -> None:
+        """Update tracked vehicles with resolved OCR plate hints."""
+        plate_map = {d.vehicle_id: (d.plate_hint, d.plate_conf) for d in detections if d.plate_hint}
+        for t in self.tracks:
+            if t.detection.vehicle_id in plate_map:
+                p_hint, p_conf = plate_map[t.detection.vehicle_id]
+                t.detection = t.detection.model_copy(update={"plate_hint": p_hint, "plate_conf": p_conf})
+
     def reset(self) -> None:
         self.tracks = []
         self.next_vehicle_idx = 1
+

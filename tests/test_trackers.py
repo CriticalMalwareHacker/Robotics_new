@@ -73,3 +73,31 @@ def test_vehicle_tracker_persistence_and_ocr():
     # Frame 4: Car 1 missed for 2nd frame -> expired
     tracked4 = tracker.update([])
     assert len(tracked4) == 0
+
+
+def test_vehicle_tracker_sync_plate_hints():
+    tracker = VehicleTracker()
+    raw = Detection(
+        vehicle_id="RAW-1",
+        polygon=[[50, 50], [90, 50], [90, 120], [50, 120]],
+        angle_deg=0.0,
+        confidence=0.90,
+    )
+    tracked = tracker.update([raw])
+    assert tracked[0].plate_hint is None
+
+    # Simulate OCR resolving plate in background
+    updated = [tracked[0].model_copy(update={"plate_hint": "MH EF 4752", "plate_conf": 0.95})]
+    tracker.sync_plate_hints(updated)
+
+    # Next frame raw detection has no plate, but tracker should retain it
+    next_raw = Detection(
+        vehicle_id="RAW-1",
+        polygon=[[51, 51], [91, 51], [91, 121], [51, 121]],
+        angle_deg=0.0,
+        confidence=0.90,
+    )
+    next_tracked = tracker.update([next_raw])
+    assert next_tracked[0].plate_hint == "MH EF 4752"
+    assert next_tracked[0].plate_conf == 0.95
+

@@ -7,6 +7,7 @@ Runs in a daemon thread; any hardware failure degrades to last-known state
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from typing import Callable
@@ -96,7 +97,8 @@ def _loop(provider: Callable[[], np.ndarray | None], interval_s: float) -> None:
                         if card_dets:
                             try:
                                 from .plate_reader import read_vehicle_plates
-                                card_dets = read_vehicle_plates(frame, card_dets)
+                                card_dets = read_vehicle_plates(frame, card_dets, async_mode=True)
+                                vehicle_tracker.sync_plate_hints(card_dets)
                             except Exception as exc:
                                 logger.debug("plate OCR: %s", exc)
 
@@ -112,7 +114,7 @@ def _loop(provider: Callable[[], np.ndarray | None], interval_s: float) -> None:
                     if dets and isinstance(detector, ClassicalDetector):
                         try:
                             from .plate_reader import read_vehicle_plates
-                            dets = read_vehicle_plates(frame, dets, detector.h, detector.calib_size)
+                            dets = read_vehicle_plates(frame, dets, detector.h, detector.calib_size, async_mode=True)
                         except Exception as exc:
                             logger.warning("plate OCR unavailable for this frame: %s", exc)
                     active_slots = slots
@@ -142,14 +144,15 @@ def _loop(provider: Callable[[], np.ndarray | None], interval_s: float) -> None:
 
 
 def start(provider: Callable[[], np.ndarray | None] | None = None,
-          interval_s: float = 1.0) -> dict:
+          interval_s: float | None = None) -> dict:
     """Start monitoring (idempotent). Returns current monitor state."""
+    effective_interval = float(os.getenv("PARK_MONITOR_INTERVAL_S", "0.08")) if interval_s is None else interval_s
     with _lock:
         if _state["running"]:
             return status()
         _state["running"] = True
         _state["thread"] = threading.Thread(
-            target=_loop, args=(provider or _default_provider, interval_s),
+            target=_loop, args=(provider or _default_provider, effective_interval),
             daemon=True)
         _state["thread"].start()
         return status()

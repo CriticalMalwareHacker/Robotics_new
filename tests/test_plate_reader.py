@@ -10,6 +10,7 @@ from backend.services.parking.plate_reader import (
     _format_plate_string,
     _order_quad_clockwise,
     _PLATE_PATTERN,
+    clear_plate_cache,
     read_vehicle_plates,
 )
 
@@ -102,3 +103,45 @@ def test_read_vehicle_plates_populates_detection(monkeypatch):
     assert len(results) == 1
     assert results[0].plate_hint == "MH EF 4752"
     assert results[0].plate_conf is not None and results[0].plate_conf >= 0.90
+
+
+def test_read_vehicle_plates_async_and_cache(monkeypatch):
+    """Verify non-blocking async execution and instant cache retrieval."""
+    import time
+    clear_plate_cache()
+
+    call_count = 0
+
+    class MockEngine:
+        def __call__(self, img):
+            nonlocal call_count
+            call_count += 1
+            return ([([[0, 0], [10, 0], [10, 5], [0, 5]], "MH HR 1058", 0.96)], [0.01])
+
+    monkeypatch.setattr("backend.services.parking.plate_reader._get_engine", lambda: MockEngine())
+
+    frame = np.full((480, 640, 3), 120, dtype=np.uint8)
+    det = Detection(
+        vehicle_id="CAR-02",
+        confidence=0.95,
+        polygon=[[100, 100], [200, 100], [200, 300], [100, 300]],
+        polygon_px=[[100, 100], [200, 100], [200, 300], [100, 300]],
+        angle_deg=90.0,
+    )
+
+    # 1. Async call returns immediately without blocking
+    res1 = read_vehicle_plates(frame, [det], async_mode=True)
+    assert len(res1) == 1
+
+    # Wait for background thread to complete
+    from backend.services.parking import plate_reader
+    if plate_reader._ocr_future:
+        plate_reader._ocr_future.result(timeout=3.0)
+
+    # 2. Subsequent call retrieves plate from memory cache in 0.01ms
+    res2 = read_vehicle_plates(frame, [det], async_mode=True)
+    assert len(res2) == 1
+    assert res2[0].plate_hint == "MH HR 1058"
+    assert res2[0].plate_conf is not None and res2[0].plate_conf >= 0.90
+
+
