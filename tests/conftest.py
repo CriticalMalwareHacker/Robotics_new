@@ -11,6 +11,11 @@ real `fcntl` is used and this stub is a no-op.
 
 import sys
 import types
+from pathlib import Path
+
+root_dir = str(Path(__file__).resolve().parent.parent)
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
 
 if "fcntl" not in sys.modules:
     try:

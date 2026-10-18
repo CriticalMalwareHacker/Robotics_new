@@ -268,8 +268,8 @@ def _auto_loop(baseline_analyses: int) -> None:
             _state["mode"] = "blocked"
             _state["last_error"] = f"Patrol command failed; stopped: {reply}"
             events.log("error", _state["last_error"])
-            return
-        _auto_stop_event.wait(0.06)
+        # Allow motor lease duration to complete and camera vibration to settle
+        _auto_stop_event.wait((lease_ms / 1000.0) + 0.08)
 
     _auto_serial("STOP", stopping=True)
 

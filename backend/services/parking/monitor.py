@@ -66,6 +66,10 @@ def load_detector():
 def _loop(provider: Callable[[], np.ndarray | None], interval_s: float) -> None:
     detector, slots = load_detector()
     deb = ViolationDebouncer()
+    from .trackers import BayGridTracker, VehicleTracker
+    bay_tracker = BayGridTracker(max_hold_frames=3)
+    vehicle_tracker = VehicleTracker(max_miss_frames=1, match_dist_px=65.0)
+
     while _state["running"]:
         try:
             frame = provider()
@@ -74,15 +78,19 @@ def _loop(provider: Callable[[], np.ndarray | None], interval_s: float) -> None:
             analysis = None
 
             if frame is not None:
-                # 1. Try dynamic marker line & card detection
+                # 1. Try dynamic marker line & card detection with temporal stability
                 try:
                     from .dynamic_detector import (
                         detect_marker_lines_and_bays,
                         detect_vehicle_cards,
                         analyze_dynamic_parking,
                     )
-                    bays, lines = detect_marker_lines_and_bays(frame)
-                    card_dets = detect_vehicle_cards(frame)
+                    raw_bays, raw_lines = detect_marker_lines_and_bays(frame)
+                    raw_cards = detect_vehicle_cards(frame)
+
+                    # Smooth transient frame drops and maintain OCR / bay persistence
+                    bays, lines = bay_tracker.update(raw_bays, raw_lines)
+                    card_dets = vehicle_tracker.update(raw_cards)
 
                     if card_dets or bays:
                         if card_dets:

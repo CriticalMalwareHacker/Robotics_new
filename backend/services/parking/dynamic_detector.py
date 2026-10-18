@@ -143,55 +143,77 @@ def detect_vehicle_cards(frame_bgr: np.ndarray) -> list[Detection]:
     min_card_area = fh * fw * 0.008
     max_card_area = fh * fw * 0.35
 
-    # Non-white regions on the mat (yellow, red, black, blue, green)
+    hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
     non_white = cv2.bitwise_and(cv2.bitwise_not(paper_mask), mat_mask)
 
-    # Morphological opening removes thin 2-6px marker lines while keeping cards solid
-    open_k = max(5, int(min(fh, fw) * 0.02) | 1)
-    cards_opened = cv2.morphologyEx(
-        non_white, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (open_k, open_k))
-    )
+    # Dedicated color channel segmentation prevents adjacent colored cards from merging
+    # Red channel (Hue wraps around 0 and 180)
+    red_mask = (cv2.inRange(hsv, (0, 50, 50), (15, 255, 255)) | cv2.inRange(hsv, (160, 50, 50), (180, 255, 255))) & mat_mask
+    # Yellow channel (Hue 16..45)
+    yellow_mask = cv2.inRange(hsv, (16, 45, 60), (45, 255, 255)) & mat_mask
+    # Other saturated color channel (Blue, Green, etc. Hue 46..159)
+    other_sat_mask = cv2.inRange(hsv, (46, 50, 50), (159, 255, 255)) & mat_mask
+    # Dark/Neutral/Black channel on the mat
+    dark_neutral_mask = non_white & cv2.bitwise_not(red_mask | yellow_mask | other_sat_mask)
 
-    cnts, _ = cv2.findContours(cards_opened, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    open_k = max(5, int(min(fh, fw) * 0.02) | 1)
+    k = cv2.getStructuringElement(cv2.MORPH_RECT, (open_k, open_k))
 
     raw_candidates: list[tuple[float, float, np.ndarray, float]] = []
-    for c in cnts:
-        area = float(cv2.contourArea(c))
-        if not (min_card_area <= area <= max_card_area):
-            continue
+    channels = [red_mask, yellow_mask, other_sat_mask, dark_neutral_mask]
 
-        c_hull = cv2.convexHull(c)
-        hull_area = float(cv2.contourArea(c_hull))
-        if not (min_card_area <= hull_area <= max_card_area):
-            continue
+    for mask_ch in channels:
+        opened = cv2.morphologyEx(mask_ch, cv2.MORPH_OPEN, k)
+        cnts, _ = cv2.findContours(opened, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for c in cnts:
+            area = float(cv2.contourArea(c))
+            if not (min_card_area <= area <= max_card_area):
+                continue
 
-        rect = cv2.minAreaRect(c_hull)
-        (cx, cy), (rw, rh), _ = rect
-        if min(rw, rh) < 12:
-            continue
+            c_hull = cv2.convexHull(c)
+            hull_area = float(cv2.contourArea(c_hull))
+            if not (min_card_area <= hull_area <= max_card_area):
+                continue
 
-        aspect = max(rw, rh) / min(rw, rh)
-        if not (1.05 <= aspect <= 4.5):
-            continue
+            solidity = area / hull_area if hull_area > 0 else 0
+            if solidity < 0.60:
+                continue
 
-        # Extract tight 4-corner perspective quad
-        poly = extract_tight_card_polygon(c)
-        if len(poly) < 4:
-            continue
+            rect = cv2.minAreaRect(c_hull)
+            (cx, cy), (rw, rh), _ = rect
+            if min(rw, rh) < 12:
+                continue
 
-        # Determine vehicle driving orientation (angle of side edges closer to vertical/perspective)
-        dx_side = (poly[2][0] - poly[1][0] + poly[3][0] - poly[0][0]) / 2.0
-        dy_side = (poly[2][1] - poly[1][1] + poly[3][1] - poly[0][1]) / 2.0
-        side_ang = float(math.degrees(math.atan2(dy_side, dx_side))) % 180.0
+            aspect = max(rw, rh) / min(rw, rh)
+            if not (1.05 <= aspect <= 4.5):
+                continue
 
-        dx_top = (poly[1][0] - poly[0][0] + poly[2][0] - poly[3][0]) / 2.0
-        dy_top = (poly[1][0] - poly[0][0] + poly[2][1] - poly[3][1]) / 2.0
-        top_ang = float(math.degrees(math.atan2(dy_top, dx_top))) % 180.0
+            # Strict Mat Enclosure: Discard candidate if >= 20% of its area lies outside the white mat
+            cand_mask = np.zeros((fh, fw), dtype=np.uint8)
+            cv2.drawContours(cand_mask, [c_hull], -1, 255, -1)
+            inside_mat = cv2.countNonZero(cv2.bitwise_and(cand_mask, mat_mask))
+            total_cand = cv2.countNonZero(cand_mask)
+            if total_cand > 0 and (inside_mat / total_cand) < 0.80:
+                continue
 
-        best_ang = side_ang if abs(side_ang - 90.0) <= abs(top_ang - 90.0) else top_ang
-        raw_candidates.append((cx, cy, poly, best_ang))
+            # Extract tight 4-corner perspective quad
+            poly = extract_tight_card_polygon(c)
+            if len(poly) < 4:
+                continue
 
-    # Deduplicate overlapping detections
+            # Determine vehicle driving orientation (angle of side edges closer to vertical/perspective)
+            dx_side = (poly[2][0] - poly[1][0] + poly[3][0] - poly[0][0]) / 2.0
+            dy_side = (poly[2][1] - poly[1][1] + poly[3][1] - poly[0][1]) / 2.0
+            side_ang = float(math.degrees(math.atan2(dy_side, dx_side))) % 180.0
+
+            dx_top = (poly[1][0] - poly[0][0] + poly[2][0] - poly[3][0]) / 2.0
+            dy_top = (poly[1][0] - poly[0][0] + poly[2][1] - poly[3][1]) / 2.0
+            top_ang = float(math.degrees(math.atan2(dy_top, dx_top))) % 180.0
+
+            best_ang = side_ang if abs(side_ang - 90.0) <= abs(top_ang - 90.0) else top_ang
+            raw_candidates.append((cx, cy, poly, best_ang))
+
+    # Deduplicate overlapping detections across color channels
     filtered: list[tuple[float, float, np.ndarray, float]] = []
     for cand in raw_candidates:
         cx1, cy1 = cand[0], cand[1]
@@ -217,7 +239,7 @@ def detect_vehicle_cards(frame_bgr: np.ndarray) -> list[Detection]:
                 vehicle_id=f"CAR-{i:02d}",
                 polygon=poly_list,
                 angle_deg=round(ang, 1),
-                confidence=0.92,
+                confidence=0.94,
                 polygon_px=poly_px,
             )
         )
@@ -288,7 +310,11 @@ def detect_marker_lines_and_bays(frame_bgr: np.ndarray) -> tuple[list[Slot], lis
     if not vert_lines:
         return [], []
 
-    # Project lines to baseline to cluster collinear/perspective dividers
+    # Determine vertical span of the parking area
+    y_indices = np.where(mat_mask > 0)[0]
+    y_top = float(y_indices.min() + 5) if len(y_indices) > 0 else float(fh * 0.3)
+    y_bot = float(y_indices.max() - 5) if len(y_indices) > 0 else float(fh * 0.95)
+
     def _x_at_y(l_seg: tuple[int, int, int, int, float], target_y: float) -> float:
         lx1, ly1, lx2, ly2, _ = l_seg
         if abs(ly2 - ly1) < 1e-4:
@@ -296,7 +322,7 @@ def detect_marker_lines_and_bays(frame_bgr: np.ndarray) -> tuple[list[Slot], lis
         return float(lx1) + (target_y - ly1) * (lx2 - lx1) / (ly2 - ly1)
 
     ref_y = float(fh * 0.85)
-    cluster_dist_thresh = max(25.0, fw * 0.06)
+    cluster_dist_thresh = max(22.0, fw * 0.055)
 
     clusters: list[list[tuple[int, int, int, int, float]]] = []
     for l_seg in vert_lines:
@@ -311,13 +337,16 @@ def detect_marker_lines_and_bays(frame_bgr: np.ndarray) -> tuple[list[Slot], lis
         if not matched:
             clusters.append([l_seg])
 
-    # Determine vertical span of the parking area
-    y_indices = np.where(mat_mask > 0)[0]
-    y_top = float(y_indices.min() + 5) if len(y_indices) > 0 else float(fh * 0.3)
-    y_bot = float(y_indices.max() - 5) if len(y_indices) > 0 else float(fh * 0.95)
+    # Cluster length filter: Real marker divider lines have substantial length across the mat
+    # Stray specks, noise, or short shadows (< 22% of mat height) are rejected
+    min_cluster_len = max(30.0, (y_bot - y_top) * 0.22)
+    valid_clusters = [
+        cl for cl in clusters
+        if sum(math.hypot(s[2] - s[0], s[3] - s[1]) for s in cl) >= min_cluster_len
+    ]
 
     merged_lines: list[tuple[float, float, float, float, float]] = []
-    for cl in clusters:
+    for cl in valid_clusters:
         pts = []
         for l_seg in cl:
             pts.extend([(l_seg[0], l_seg[1]), (l_seg[2], l_seg[3])])
@@ -334,14 +363,28 @@ def detect_marker_lines_and_bays(frame_bgr: np.ndarray) -> tuple[list[Slot], lis
     # Sort lines left-to-right by average x
     merged_lines.sort(key=lambda l: (l[0] + l[2]) / 2)
 
+    # Deduplicate lines that are too close to each other
+    dedupe_dist = max(38.0, fw * 0.085)
+    deduped_lines: list[tuple[float, float, float, float, float]] = []
+    for l in merged_lines:
+        if not deduped_lines:
+            deduped_lines.append(l)
+        else:
+            prev = deduped_lines[-1]
+            l_avg = (l[0] + l[2]) / 2
+            prev_avg = (prev[0] + prev[2]) / 2
+            if abs(l_avg - prev_avg) < dedupe_dist:
+                continue
+            deduped_lines.append(l)
+
     # Form dynamic parking bays between adjacent pairs of divider lines
     bays: list[Slot] = []
-    min_slot_width = max(20.0, fw * 0.05)
-    max_slot_width = fw * 0.60
+    min_slot_width = max(25.0, fw * 0.06)
+    max_slot_width = fw * 0.65
 
-    for idx in range(len(merged_lines) - 1):
-        l1 = merged_lines[idx]
-        l2 = merged_lines[idx + 1]
+    for idx in range(len(deduped_lines) - 1):
+        l1 = deduped_lines[idx]
+        l2 = deduped_lines[idx + 1]
 
         w_top = abs(l2[0] - l1[0])
         w_bot = abs(l2[2] - l1[2])
@@ -371,7 +414,10 @@ def detect_marker_lines_and_bays(frame_bgr: np.ndarray) -> tuple[list[Slot], lis
                 )
             )
 
-    line_segments = [(int(round(l[0])), int(round(l[1])), int(round(l[2])), int(round(l[3]))) for l in merged_lines]
+    line_segments = [
+        (int(round(l[0])), int(round(l[1])), int(round(l[2])), int(round(l[3])))
+        for l in deduped_lines
+    ]
     return bays, line_segments
 
 
