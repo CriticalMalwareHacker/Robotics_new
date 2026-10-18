@@ -117,3 +117,27 @@ def test_stream_headers_without_consuming_body(monkeypatch):
 
     first = asyncio.run(first_chunk())
     assert first.startswith(b"--frame\r\nContent-Type: image/jpeg")
+
+
+def test_robot_sensors_telemetry(monkeypatch):
+    """Verify live sensor telemetry in robot status and /api/robot/sensors."""
+    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.setenv("ROBOT_MODE", "mock")
+
+    resp = client.get("/api/robot/sensors")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "distance_cm" in data
+    assert "ir_blocked" in data
+    assert "obstacle" in data
+    assert data["distance_cm"] is not None
+    assert data["ir_blocked"] is False
+
+    hud_resp = client.get("/api/hud/state")
+    assert hud_resp.status_code == 200
+    hud_data = hud_resp.json()
+    assert hud_data["robot"]["distance_cm"] is not None
+    assert hud_data["robot"]["ir_blocked"] is False
+    assert hud_data["devices"]["ultrasonic"] == "ok"
+    assert hud_data["devices"]["ir"] == "ok"
+

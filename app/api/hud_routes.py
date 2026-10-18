@@ -86,6 +86,11 @@ def _devices() -> dict:
 @router.get("/api/hud/state")
 def hud_state():
     from app.services.camera import camera_manager
+    try:
+        from .robot_routes import start_telemetry_loop
+        start_telemetry_loop()
+    except Exception:
+        pass
 
     try:
         meta = camera_manager.get_frame_meta()

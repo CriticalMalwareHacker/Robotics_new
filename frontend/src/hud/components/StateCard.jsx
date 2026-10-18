@@ -96,8 +96,8 @@ export default function StateCard({
             </div>
             <div className="w-full bg-border/40 h-1 rounded-full overflow-hidden">
               <div
-                className={cn('h-full transition-all', distanceCm && distanceCm <= 18 ? 'bg-red-500' : 'bg-emerald-500')}
-                style={{ width: `${Math.min(100, Math.max(10, ((distanceCm || 50) / 60) * 100))}%` }}
+                className={cn('h-full transition-all duration-300', distanceCm && distanceCm <= 18 ? 'bg-red-500 shadow-sm shadow-red-500/50' : 'bg-emerald-500 shadow-sm shadow-emerald-500/50')}
+                style={{ width: distanceCm == null ? '0%' : `${Math.min(100, Math.max(5, (distanceCm / 60) * 100))}%` }}
               />
             </div>
           </div>

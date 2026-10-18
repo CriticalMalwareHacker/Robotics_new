@@ -108,7 +108,14 @@ def test_read_vehicle_plates_populates_detection(monkeypatch):
 def test_read_vehicle_plates_async_and_cache(monkeypatch):
     """Verify non-blocking async execution and instant cache retrieval."""
     import time
+    from concurrent.futures import ThreadPoolExecutor
+    from backend.services.parking import monitor, plate_reader
+
+    monitor.stop()
     clear_plate_cache()
+
+    test_executor = ThreadPoolExecutor(max_workers=1)
+    monkeypatch.setattr("backend.services.parking.plate_reader._get_ocr_executor", lambda: test_executor)
 
     call_count = 0
 
@@ -134,7 +141,6 @@ def test_read_vehicle_plates_async_and_cache(monkeypatch):
     assert len(res1) == 1
 
     # Wait for background thread to complete
-    from backend.services.parking import plate_reader
     if plate_reader._ocr_future:
         plate_reader._ocr_future.result(timeout=3.0)
 
@@ -143,5 +149,7 @@ def test_read_vehicle_plates_async_and_cache(monkeypatch):
     assert len(res2) == 1
     assert res2[0].plate_hint == "MH HR 1058"
     assert res2[0].plate_conf is not None and res2[0].plate_conf >= 0.90
+    test_executor.shutdown(wait=False)
+
 
 

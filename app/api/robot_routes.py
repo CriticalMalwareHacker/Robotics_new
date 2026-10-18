@@ -52,6 +52,41 @@ _ir_sensor = None
 _ir_sensor_lock = threading.Lock()
 _ultrasonic_sensor = None
 _ultrasonic_sensor_lock = threading.Lock()
+_sensor_read_lock = threading.Lock()
+_telemetry_thread: threading.Thread | None = None
+_telemetry_running: bool = False
+_telemetry_lock = threading.Lock()
+
+
+def start_telemetry_loop(interval_s: float = 0.12) -> None:
+    """Start continuous background sensor telemetry sampling loop."""
+    global _telemetry_thread, _telemetry_running
+    with _telemetry_lock:
+        if _telemetry_running:
+            return
+        _telemetry_running = True
+        _telemetry_thread = threading.Thread(
+            target=_telemetry_worker, args=(interval_s,), daemon=True, name="SensorTelemetry"
+        )
+        _telemetry_thread.start()
+        logger.info("Live sensor telemetry background loop started (%.2fs)", interval_s)
+
+
+def stop_telemetry_loop() -> None:
+    """Stop continuous background sensor telemetry sampling loop."""
+    global _telemetry_running
+    with _telemetry_lock:
+        _telemetry_running = False
+
+
+def _telemetry_worker(interval_s: float) -> None:
+    """Continuously sample IR and Ultrasonic distance in background."""
+    while _telemetry_running:
+        try:
+            _sensor_reading()
+        except Exception as exc:
+            logger.debug("Sensor telemetry error: %s", exc)
+        time.sleep(interval_s)
 
 
 def _serial(command: str) -> tuple[bool, str]:
@@ -69,7 +104,7 @@ def _auto_serial(command: str, *, stopping: bool = False) -> tuple[bool, str]:
         return _serial(command)
 
 
-def _read_ir_blocked() -> bool:
+def _read_ir_blocked() -> bool | None:
     """Read the HW-201's active-low OUT signal on the Pi (BCM GPIO22)."""
     global _ir_sensor
     try:
@@ -83,7 +118,7 @@ def _read_ir_blocked() -> bool:
             return bool(_ir_sensor.value == 0)
     except Exception as exc:
         logger.debug("IR sensor read failed: %s", exc)
-        return False
+        return None
 
 
 def _read_ultrasonic_raw() -> float:
@@ -99,10 +134,14 @@ def _read_ultrasonic_raw() -> float:
             _ultrasonic_sensor = DistanceSensor(
                 echo=echo, trigger=trigger, max_distance=1.5, queue_len=2, partial=True
             )
-        dist = _ultrasonic_sensor.distance
-        if dist is None or math.isnan(dist):
+        try:
+            dist = _ultrasonic_sensor.distance
+            if dist is None or math.isnan(dist):
+                return 0.0
+            return float(dist) * 100.0
+        except Exception as exc:
+            logger.debug("Ultrasonic raw read note: %s", exc)
             return 0.0
-        return float(dist) * 100.0
 
 
 def _read_ultrasonic_cm() -> float:
@@ -120,16 +159,39 @@ def _read_ultrasonic_cm() -> float:
 
 def _sensor_reading() -> tuple[bool, bool]:
     # Both sensors are on the Pi now. Arduino serial remains the motor-control link.
-    distance_cm = _read_ultrasonic_cm()
-    ir_blocked = _read_ir_blocked()
-    distance = int(round(distance_cm)) if distance_cm > 0 else 0
-    _state["distance_cm"] = distance if distance > 0 else None
-    _state["ir_blocked"] = ir_blocked
-    _state["sensor_seen"] = True
-    _state["ultrasonic_seen"] = (distance_cm > 0)
-    _state["ir_seen"] = True
-    obstacle = ir_blocked or (distance > 0 and distance <= int(os.getenv("ROBOT_OBSTACLE_CM", "18")))
-    return obstacle, ir_blocked
+    with _sensor_read_lock:
+        if not _real_mode():
+            _state["distance_cm"] = 45
+            _state["ir_blocked"] = False
+            _state["sensor_seen"] = True
+            _state["ultrasonic_seen"] = True
+            _state["ir_seen"] = True
+            _state["obstacle"] = False
+            return False, False
+
+        distance_cm = _read_ultrasonic_cm()
+        ir_val = _read_ir_blocked()
+
+        if ir_val is not None:
+            _state["ir_blocked"] = ir_val
+            _state["ir_seen"] = True
+        ir_blocked = bool(_state.get("ir_blocked", False))
+
+        distance = int(round(distance_cm)) if distance_cm > 0 else 0
+        if distance > 0:
+            _state["distance_cm"] = distance
+            _state["ultrasonic_seen"] = True
+            _state["last_distance_time"] = time.monotonic()
+        else:
+            # Retain last distance for up to 1.5s to avoid momentary flickering drops
+            if time.monotonic() - _state.get("last_distance_time", 0) > 1.5:
+                _state["distance_cm"] = None
+
+        _state["sensor_seen"] = bool(_state.get("ultrasonic_seen") or _state.get("ir_seen"))
+        obstacle = ir_blocked or (distance > 0 and distance <= int(os.getenv("ROBOT_OBSTACLE_CM", "18")))
+        _state["obstacle"] = obstacle
+        return obstacle, ir_blocked
+
 
 
 def _auto_loop(baseline_analyses: int) -> None:
@@ -296,6 +358,8 @@ class ReviewConfirmation(BaseModel):
 
 @router.get("/api/robot/status")
 def status():
+    if not _telemetry_running:
+        start_telemetry_loop()
     link = _link()
     return {
         "state": "ESTOP" if _state["estop"] else {
@@ -328,7 +392,22 @@ def status():
     }
 
 
+@router.get("/api/robot/sensors")
+def get_sensors():
+    """Live obstacle sensors endpoint for real-time telemetry diagnostics."""
+    if not _telemetry_running:
+        start_telemetry_loop()
+    return {
+        "distance_cm": _state.get("distance_cm"),
+        "ir_blocked": _state.get("ir_blocked"),
+        "obstacle": _state.get("obstacle", False),
+        "ultrasonic_seen": _state.get("ultrasonic_seen", False),
+        "ir_seen": _state.get("ir_seen", False),
+    }
+
+
 @router.post("/api/robot/command")
+
 def command(cmd: DriveCommand):
     if _state["estop"]:
         raise HTTPException(status_code=409,

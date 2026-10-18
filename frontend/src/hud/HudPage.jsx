@@ -24,7 +24,7 @@ function themeInitial() {
 
 export default function HudPage() {
   const [theme, setTheme] = useState(themeInitial)
-  const { state, connection, error, refresh, fetchedAt } = useHudState(1500)
+  const { state, connection, error, refresh, fetchedAt } = useHudState(750)
   const [clearing, setClearing] = useState(false)
   const [printing, setPrinting] = useState(false)
   const [printingId, setPrintingId] = useState(null)
