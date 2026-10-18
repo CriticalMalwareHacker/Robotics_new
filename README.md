@@ -246,7 +246,7 @@ cd ~/Robotics_new
 ```
 
 This script:
-1. Temporarily connects to your Wi-Fi network (configured for `Airtel_8994`).
+1. Temporarily connects to your Wi-Fi network (configured for `Airtel_Zerotouch_5G`).
 2. Pulls the latest commits from the `robotics` branch on GitHub.
 3. Restarts the `printsensei-robot` systemd service.
 4. **Guarantees that the `PrintSensei` hotspot is restored upon completion**, even if an error or interruption occurs.

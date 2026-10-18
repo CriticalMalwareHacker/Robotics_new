@@ -130,7 +130,7 @@ These commands activate/deactivate the saved profile; they do not delete it or e
 
 Pi internet was needed to pull from GitHub. Windows Internet Connection Sharing over USB Ethernet (`Ethernet 3`, gateway `192.168.137.1`) was attempted. The Pi obtained `192.168.137.2` and could ping the gateway but could not reach `1.1.1.1` or resolve `github.com`; ICS was not forwarding internet. Disconnecting Pi eth0 dropped SSH, and `ap.local` did not resolve, but the user recovered access.
 
-The working route was to connect Pi to the saved NetworkManager profile `Airtel_8994`; `git pull` then succeeded. The user confirmed the pull and wanted the project hotspot back. To automate this without getting locked out of SSH, use the fail-safe `update.sh` script, or run:
+The working route was to connect Pi to the Wi-Fi network `Airtel_Zerotouch_5G`; `git pull` then succeeded. The user confirmed the pull and wanted the project hotspot back. To automate this without getting locked out of SSH, use the fail-safe `update.sh` script, or run:
 
 ```bash
 # Automated 1-command updater with safety trap that always restores hotspot:
@@ -141,10 +141,10 @@ Or manually:
 
 ```bash
 sudo nmcli connection down printsensei-hotspot
-sudo nmcli connection up "Airtel_8994"
+sudo nmcli device wifi connect "Airtel_Zerotouch_5G" password "Airtel@123"
 git pull origin robotics
 sudo systemctl restart printsensei-robot
-sudo nmcli connection down "Airtel_8994"
+sudo nmcli connection down "Airtel_Zerotouch_5G"
 sudo nmcli connection up printsensei-hotspot
 ```
 

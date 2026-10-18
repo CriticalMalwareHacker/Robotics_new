@@ -6,7 +6,8 @@
 set -eo pipefail
 
 HOTSPOT_CONNECTION="printsensei-hotspot"
-INTERNET_CONNECTION="${1:-Airtel_8994}"
+INTERNET_SSID="${1:-Airtel_Zerotouch_5G}"
+INTERNET_PASS="${2:-Airtel@123}"
 SERVICE_NAME="printsensei-robot"
 PROJECT_DIR="${HOME}/Robotics_new"
 
@@ -17,7 +18,7 @@ echo "=========================================="
 restore_hotspot() {
     echo ""
     echo "[*] Restoring project hotspot (${HOTSPOT_CONNECTION})..."
-    sudo nmcli connection down "${INTERNET_CONNECTION}" >/dev/null 2>&1 || true
+    sudo nmcli connection down "${INTERNET_SSID}" >/dev/null 2>&1 || true
     sudo nmcli connection up "${HOTSPOT_CONNECTION}" || {
         echo "[!] Warning: Could not bring up ${HOTSPOT_CONNECTION} automatically."
         echo "    Try running: sudo nmcli connection up ${HOTSPOT_CONNECTION}"
@@ -28,9 +29,17 @@ restore_hotspot() {
 # Ensure the hotspot is ALWAYS restored no matter what happens (error, exit, or SIGINT)
 trap restore_hotspot EXIT
 
-echo "[1/4] Switching Wi-Fi: Hotspot OFF -> '${INTERNET_CONNECTION}' ON..."
+echo "[1/4] Switching Wi-Fi: Hotspot OFF -> '${INTERNET_SSID}' ON..."
 sudo nmcli connection down "${HOTSPOT_CONNECTION}" || true
-sudo nmcli connection up "${INTERNET_CONNECTION}"
+
+# If the Wi-Fi connection profile is not yet saved, connect with password; otherwise activate it
+if sudo nmcli connection show "${INTERNET_SSID}" >/dev/null 2>&1; then
+    echo "      Found existing profile for '${INTERNET_SSID}', activating..."
+    sudo nmcli connection up "${INTERNET_SSID}" || sudo nmcli device wifi connect "${INTERNET_SSID}" password "${INTERNET_PASS}"
+else
+    echo "      Connecting to '${INTERNET_SSID}' with password..."
+    sudo nmcli device wifi connect "${INTERNET_SSID}" password "${INTERNET_PASS}"
+fi
 
 echo "[2/4] Testing internet connectivity..."
 CONNECTED=0
@@ -44,7 +53,7 @@ for i in {1..10}; do
 done
 
 if [[ $CONNECTED -ne 1 ]]; then
-    echo "[✗] Error: Could not reach the internet through '${INTERNET_CONNECTION}'."
+    echo "[✗] Error: Could not reach the internet through '${INTERNET_SSID}'."
     exit 1
 fi
 echo "      Internet is reachable!"
