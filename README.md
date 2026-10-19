@@ -98,14 +98,16 @@ The system pairs a **Raspberry Pi 5** (hosting computer vision, plate OCR, and a
 
 | Subsystem | Component | Interface & Pins | Details |
 | :--- | :--- | :--- | :--- |
-| **Brain / Compute** | Raspberry Pi 5 (8 GB) | Debian Linux (Bookworm) | Runs FastAPI, OpenCV, RapidOCR, and GPIO Zero. |
+| **Brain / Compute** | Raspberry Pi 5 (8 GB) | Debian Linux (Bookworm) | Runs FastAPI, OpenCV, RapidOCR, and GPIO Zero. Powered by **Mi 20,000mAh Power Bank** (5V USB-C PD). |
 | **Microcontroller** | Arduino Uno R3 | USB Serial (115200 baud) | Interprets leased motor commands; runs hardware watchdog. |
-| **Motor Driver** | Adafruit Motor Shield V1 | Dual L293D H-Bridges | Channels: M1+M3 Left, M2+M4 Right. Powered by external battery pack. |
-| **Motors** | 4 × TT Geared DC Motors | 4WD Skid-Steer | PWM calibrated to 255 for reliable loaded start. |
-| **Ultrasonic Sensor**| HC-SR04 | Pi GPIO 5 (Trig), GPIO 6 (Echo) | **Requires voltage divider on Echo** (1 kΩ to GPIO 6, 2 kΩ to GND) to protect 3.3V Pi logic. |
-| **Infrared Sensor** | HW-201 Digital IR | Pi GPIO 22 (Out), 3.3V, GND | Active-low binary proximity sensor for close-range front obstacles. |
-| **Vision Sensor** | USB UVC Camera | USB 2.0 / 3.0 | Real-time MJPEG feed at 640×480 or 1280×720 resolution. |
-| **Citation Printer** | SHREYANS POSIFLOW 58D | USB `/dev/usb/lp0` / BT | Direct-thermal 203 DPI, 384 dots wide, ESC/POS raster output. |
+| **Motor Driver** | Adafruit Motor Shield V1 | Dual L293D H-Bridges | Channels: M1+M3 Left, M2+M4 Right. Powered by **dedicated external Battery Pack** for high torque & faster wheel speeds. |
+| **Motors** | 4 × TT Geared DC Motors | 4WD Skid-Steer | PWM calibrated to 255 for reliable loaded start under chassis weight. |
+| **Enclosure** | Custom Acrylic Enclosure | 3-Sided (Top, Left, Right) | Front & Back deliberately open for sensor line-of-sight, thermal ticket ejection, and thermal ventilation. |
+| **Vision Sensor** | **Hikvision HD USB Webcam** | USB 2.0 / 3.0 | Real-time MJPEG feed at 640×480 or 1280×720 resolution mounted at front. |
+| **Ultrasonic Sensor**| HC-SR04 | Pi GPIO 5 (Trig), GPIO 6 (Echo) | Mounted ahead. **Requires voltage divider on Echo** (1 kΩ to GPIO 6, 2 kΩ to GND) to protect 3.3V Pi logic. |
+| **Infrared Sensor** | HW-201 Digital IR | Pi GPIO 22 (Out), 3.3V, GND | Mounted ahead. Active-low binary proximity sensor for close-range front obstacles. |
+| **Citation Printer** | SHREYANS POSIFLOW 58D | USB `/dev/usb/lp0` / BT | Direct-thermal 203 DPI, 384 dots wide, ESC/POS raster output with scannable QR verification code. |
+| **Demo Apparatus** | White Paper Mat & Cards | Tabletop / Floor setup | White paper with drawn marker bays, colored vehicle cards with plate stickers, and test obstacles (shoe box, bottle). |
 
 ---
 

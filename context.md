@@ -12,14 +12,21 @@ PrintSensei combines a FastAPI backend/dashboard, a 58 mm thermal printer, parki
 - Observed service executable: `/home/ps/Robotics_new/venv/bin/uvicorn`, running as user `ps`.
 - The checked-in unit template may show older `/home/pi/...` paths; the Pi's actual service configuration is authoritative.
 
-## Hardware: drive and serial link
+## Hardware: Drive, Power Delivery & Enclosure
 
-- Raspberry Pi 5 runs the backend and commands the robot.
-- Arduino Uno connects to Pi over USB serial at 115200 baud.
-- Uno has an Adafruit Motor Shield V1 (`AFMotor.h`) and four DC motors.
-- Sketch: `arduino/park_sensei_serial/park_sensei_serial.ino`; M1+M3 are left, M2+M4 are right.
-- Motor supply powers the shield/motors separately. Do not power motors from USB.
-- PWM is currently forced to 255 because loaded motors did not start reliably at lower PWM.
+- **Compute Core (Master):** Raspberry Pi 5 (8GB) running the FastAPI backend, computer vision, plate OCR, and hosting the HUD.
+  - **Power Source:** Dedicated **Mi 20,000mAh Power Bank** supplying clean, high-amperage 5V USB-C power to prevent CPU throttling or undervoltage.
+- **Actuator Controller (Slave):** Arduino Uno R3 connected to Pi over USB serial at 115200 baud.
+  - **Motor Driver Shield:** Adafruit Motor Shield V1 (`AFMotor.h` with dual L293D H-bridges).
+  - **Motor Power Supply:** Dedicated external high-discharge **Battery Pack** connected to the shield's `EXT_PWR` terminals (PWR jumper removed). This isolates motor inductive spikes from Pi logic and provides higher voltage/current, making the 4 DC motors significantly faster and stronger under load.
+  - **Motors & Kinematics:** 4 × TT geared DC motors in 4WD skid-steer configuration (M1+M3 Left, M2+M4 Right).
+  - Sketch: `arduino/park_sensei_serial/park_sensei_serial.ino`. PWM is calibrated to 255 for reliable loaded start.
+- **Chassis & Physical Enclosure:**
+  - 4WD Smart Car robotic chassis platform.
+  - **Custom Acrylic Case:** Enclosure covering **3 sides: Top, Left, and Right**.
+  - **Deliberately Open Front & Back:**
+    - **Front Side:** Uncovered to provide unobstructed field-of-view for the Hikvision webcam, HC-SR04 ultrasonic transducer, and HW-201 IR emitter/receiver.
+    - **Back Side:** Uncovered for physical thermal ticket paper ejection, easy battery charging / cable access, and unimpeded heat ventilation.
 
 Serial protocol (newline-delimited):
 
@@ -36,23 +43,35 @@ The Arduino clamps each movement lease to 100–500 ms and releases all channels
 
 Find the Uno path on the Pi with `ls -l /dev/serial/by-id/`. Set Pi `.env` values `ROBOT_MODE=real`, `ROBOT_SERIAL_PORT=/dev/serial/by-id/<exact-device>`, `ROBOT_SERIAL_BAUD=115200`. The Uno resets when serial opens; the backend waits about two seconds and expects PING/PONG.
 
-## Hardware: obstacle sensors on Pi 5
+## Hardware: Front Perception Suite (All 3 connected to Pi 5)
 
-Both sensors are connected to the Pi; Arduino remains the motor controller.
+All three front perception devices are mounted ahead on the front of the chassis and connected directly to the Raspberry Pi 5 (Arduino is dedicated strictly to motor PWM):
 
-| Sensor pin | Pi connection |
-| --- | --- |
-| HC-SR04 VCC | 5 V, physical pin 2 |
-| HC-SR04 GND | GND, physical pin 14 |
-| HC-SR04 TRIG | BCM GPIO5, physical pin 29 |
-| HC-SR04 ECHO | BCM GPIO6, physical pin 31, through a voltage divider |
-| HW-201 IR VCC | 3.3 V, physical pin 1 |
-| HW-201 IR GND | GND, physical pin 6 |
-| HW-201 IR OUT | BCM GPIO22, physical pin 15 |
+1. **Hikvision HD USB Webcam:**
+   - Mounted at the front, angled downward toward the parking surface.
+   - UVC-compliant USB video device providing live frames for parking line synthesis and card vehicle detection.
+2. **HC-SR04 Ultrasonic Rangefinder:**
+   - Mounted ahead facing forward for mid/long-range obstacle detection (calibrated stop at $\le 18$ cm).
+   - Non-blocking threaded reader (`0.25s` timeout) in `app/api/robot_routes.py`.
+3. **HW-201 Infrared (IR) Proximity Sensor:**
+   - Mounted ahead facing forward for close-range front collision detection (active-low binary beam).
 
-Do not connect HC-SR04's 5 V ECHO directly to a Pi GPIO. The documented divider is 1 kΩ from ECHO to GPIO6 and 2 kΩ from the GPIO6 junction to GND. IR is read active-low. The user confirmed IR indicator/detection and accurate changing ultrasonic distance readings.
+| Sensor pin | Pi connection | Function & Protection |
+| --- | --- | --- |
+| HC-SR04 VCC | 5 V, physical pin 2 | Sensor 5V power supply |
+| HC-SR04 GND | GND, physical pin 14 | Ground reference |
+| HC-SR04 TRIG | BCM GPIO5, physical pin 29 | 10 µs trigger pulse |
+| HC-SR04 ECHO | BCM GPIO6, physical pin 31 | **Voltage divider (1 kΩ to GPIO6, 2 kΩ to GND)** steps 5V echo to safe 3.3V Pi logic |
+| HW-201 IR VCC | 3.3 V, physical pin 1 | Sensor 3.3V logic power |
+| HW-201 IR GND | GND, physical pin 6 | Ground reference |
+| HW-201 IR OUT | BCM GPIO22, physical pin 15 | Active-low obstacle detection |
 
-GPIO23/24 were previously busy; `gpioinfo` showed GPIO24 held as output with consumer `dc`. Stopping the service did not immediately release that pin. GPIO5/6 were later found available and used for the ultrasonic sensor. Current defaults in `app/api/robot_routes.py`: IR GPIO22, ultrasonic trigger GPIO5, echo GPIO6. Pi `.env` can override via `ROBOT_IR_GPIO`, `ROBOT_ULTRASONIC_TRIGGER_GPIO`, `ROBOT_ULTRASONIC_ECHO_GPIO`.
+## Demonstration & Evaluation Setup
+
+- **Parking Mat / Surface:** Large white paper sheet with high-contrast black marker lines defining designated parking bays (`BAY-1`, `BAY-2`, `BAY-3`).
+- **Vehicle Scale Models:** Different colored rectangular cards (yellow, red, black, blue, green) and boxes representing parked vehicles, each affixed with a real printed vehicle license plate sticker (e.g. `MH EF 4752`, `MH01AB1234`).
+- **Obstacle Avoidance Test Objects:** Physical everyday items (shoe boxes, bottles) placed along the robot's driving corridor to evaluate real-time ultrasonic and IR obstacle detection, reverse clearance, and escape pivots.
+- **Physical Ticketing Output:** 58 mm thermal receipt printer (POSIFLOW 58D / ESC/POS) generating real scannable QR verification tickets that open the `/history` evidence gallery with annotated vehicle photos.
 
 ## Robot behavior and safety
 

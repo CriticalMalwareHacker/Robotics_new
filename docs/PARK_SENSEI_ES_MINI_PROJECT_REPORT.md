@@ -25,16 +25,28 @@ To design, develop, and implement **ParkSensei**, an embedded smart parking enfo
 
 #### A. Hardware Components
 1. **Single Board Computer (Edge Processor):** Raspberry Pi 5 (8 GB RAM, Quad-core Arm Cortex-A76 @ 2.4 GHz)
+   - Powered by a dedicated **Mi 20,000mAh Power Bank** delivering stable, high-amperage 5V USB-C power to eliminate brownouts or CPU frequency throttling.
 2. **Microcontroller Unit (Actuator Subsystem):** Arduino Uno R3 (ATmega328P @ 16 MHz)
+   - Communicates with Raspberry Pi 5 over USB Serial (115200 baud).
 3. **Motor Driver Shield:** Adafruit Motor Shield V1 (Dual L293D H-Bridge Motor Drivers)
-4. **DC Motors & Drive System:** 4 × 5V–9V TT Geared DC Motors configured in 4WD Skid-Steer drive arrangement
-5. **Chassis & Wheels:** Acrylic robotic chassis with 4 high-traction rubber wheels
-6. **Vision Sensor:** High-definition USB Camera module (UVC compliant, 30 FPS)
-7. **Thermal Citation Printer:** 58 mm Thermal Receipt Printer (POSIFLOW 58D / ESC/POS protocol, 203 DPI, 384 dots/line)
-8. **Power Supplies:**
-   - 5V / 5A USB-C Power Bank for Raspberry Pi 5
-   - External 7.4V / 9V DC Battery Pack dedicated to motor driver supply (separate ground isolation)
-9. **Interfacing & Cabling:** USB Type-A to Type-B interface cable, USB printer data cable, power harnesses
+   - Powered by a dedicated external **High-Discharge Battery Pack** connected to `EXT_PWR` (logic jumper removed). This provides elevated voltage and instantaneous current, driving the 4 DC motors significantly faster and stronger under chassis load.
+4. **DC Motors & Drive System:** 4 × 5V–9V TT Geared DC Motors configured in a 4WD Skid-Steer drive arrangement (M1+M3 Left, M2+M4 Right).
+5. **Chassis & Body Enclosure:**
+   - 4WD Smart Car robotic chassis platform with high-traction rubber wheels.
+   - **Custom Acrylic Case:** Encloses **3 sides: Top, Left, and Right**.
+   - **Deliberately Open Front & Back:**
+     - **Front Side Open:** Clear, unblocked field-of-view for optical camera and obstacle sensors.
+     - **Back Side Open:** Physical ejection of printed thermal tickets, wiring harness access, battery charging, and heat ventilation.
+6. **Front Perception & Sensor Suite (All 3 connected directly to Pi 5):**
+   - **Optical Vision Sensor:** **Hikvision HD USB Webcam** (UVC compliant, wide-angle lens, angled forward-downward at the parking surface).
+   - **Ultrasonic Rangefinder:** **HC-SR04 Ultrasonic Sensor** mounted ahead for mid/long-range collision detection (Pi GPIO5 Trigger, GPIO6 Echo stepped via 1 kΩ / 2 kΩ resistor voltage divider).
+   - **Infrared Proximity Sensor:** **HW-201 Digital IR Sensor** mounted ahead for close-range front boundary detection (Pi GPIO22, active-low).
+7. **Thermal Citation Printer:** 58 mm Thermal Receipt Printer (POSIFLOW 58D / ESC/POS protocol, 203 DPI, 384 dots/line) printing official citations with high-contrast scannable QR verification codes.
+8. **Demonstration & Testing Materials:**
+   - **Scaled Parking Mat:** White paper surface with high-contrast black marker lines defining designated parking bays (`BAY-1`, `BAY-2`, `BAY-3`).
+   - **Vehicle Scale Models:** Different colored rectangular cards (yellow, red, black, blue, green) and boxes, each affixed with real printed vehicle registration plate stickers (e.g. `MH EF 4752`, `MH01AB1234`).
+   - **Obstacle Avoidance Test Objects:** Physical everyday obstacles (shoe boxes, bottles) placed in the robot's patrol corridor to test real-time ultrasonic/IR detection, reverse clearance, and escape pivots.
+9. **Interfacing & Cabling:** USB Type-A to Type-B Arduino cable, USB printer cable, sensor breadboard jumpers, resistor voltage divider network.
 
 #### B. Software Tools & Frameworks
 1. **Operating System:** Raspberry Pi OS 64-bit (Debian Bookworm with Linux Kernel 6.6+)
@@ -106,24 +118,33 @@ The system follows a distributed master-slave embedded architecture:
 #### 4.3 Major Components & Functionality
 
 1. **Raspberry Pi 5 (Master Computer):**
-   - High-performance 64-bit ARM edge computer capable of running lightweight neural networks and computer vision models concurrently with sub-second response times.
+   - High-performance 64-bit ARM edge computer capable of running lightweight neural networks, OpenCV image pipelines, and RapidOCR plate recognition models concurrently with sub-second response times.
+   - Powered by a dedicated **Mi 20,000mAh Power Bank** (5V / 3A–5A USB-C PD) guaranteeing isolated, stable current for the SoC and peripherals.
    - Hosts the offline local network access point (`PrintSensei` SSID) allowing wire-free browser connectivity for the operator console without requiring external internet.
 
 2. **Arduino Uno + Adafruit Motor Shield V1 (Motor Controller):**
    - Offloads real-time PWM pulse generation and motor switching from the Linux OS.
-   - The dual L293D drivers manage bidirectional high-current driving for 4 DC motors grouped by side (M1+M3 for Left, M2+M4 for Right) to implement skid-steer counter-rotation for sharp turns.
+   - Powered by an external **High-Discharge Battery Pack** wired to `EXT_PWR` (with logic jumper disconnected) to give motors higher voltage and torque, significantly boosting wheel rotation speed and turning capability under load.
+   - Dual L293D drivers manage bidirectional high-current driving for 4 DC motors grouped by side (M1+M3 Left, M2+M4 Right) to implement skid-steer counter-rotation for sharp turns.
 
-3. **UVC USB Optical Camera:**
-   - Provides live frame capture for parking scene analysis.
-   - Frames are geometrically warped using a four-corner projective homography matrix, converting 2D pixel coordinates into physical centimeter coordinates on the parking bay mat.
+3. **Front Perception Suite (Directly Wired to Raspberry Pi 5):**
+   - **Hikvision HD USB Optical Camera:** Wide-angle forward-downward perspective providing live optical frames for dynamic parking line synthesis and vehicle card detection.
+   - **HC-SR04 Ultrasonic Sensor:** Measures distance (0–400 cm) to ahead objects via high-frequency sonic pulses; calibrated threshold at $\le 18$ cm halts patrol for obstacle avoidance.
+   - **HW-201 Digital IR Sensor:** Provides ultra-fast, close-proximity active-low boundary detection right above ground clearance.
 
-4. **SHREYANS POSIFLOW 58D Thermal Printer:**
+4. **Chassis & 3-Sided Acrylic Enclosure:**
+   - 4WD Smart Car robotic chassis housing the motors, stacked Arduino/shield, and Pi 5 electronics.
+   - **Custom Acrylic Case:** Encloses the top deck, left side, and right side to safeguard sensitive electronics and wiring harnesses against external interference.
+   - **Open Front & Back Design:** Front is uncovered for unrestricted optical camera and ultrasonic/IR sensor sightlines; rear is uncovered for thermal paper ejection, cable access, and thermal ventilation.
+
+5. **SHREYANS POSIFLOW 58D Thermal Printer:**
    - High-reliability 58 mm direct-thermal mechanism requiring no ink or ribbon.
    - Uses Floyd-Steinberg dithering algorithms to generate crisp 1-bit monochrome graphics of parking notices and barcodes.
+   - Prints a real, scannable QR verification code that resolves to the digital evidence gallery.
 
 ---
 
-### 5. Project Photographs
+### 5. Project Photographs & Demonstration Setup
 
 > *Note: Embed clear high-resolution photographs of the physical setup here.*
 
@@ -133,34 +154,36 @@ The system follows a distributed master-slave embedded architecture:
 |                                                           |
 |             [ INSERT PHOTOGRAPH HERE:                     |
 |        Full Isometric View of ParkSensei Setup            |
-|    Showing 4WD Chassis, Raspberry Pi 5, Arduino Uno,      |
-|         Motor Shield, Camera, and Thermal Printer]        |
+|    Showing 4WD Chassis, 3-Sided Acrylic Case (Top/L/R),   |
+|     Front Hikvision Webcam & Ultrasonic/IR Sensors,       |
+|    Mi 20,000mAh Power Bank, Arduino Shield, and Printer]  |
 |                                                           |
 +-----------------------------------------------------------+
 Figure 1: Complete ParkSensei Hardware Architecture and Mobile Robotic Platform
 ```
 
-#### 5.2 Top-Down View & Wiring Layout
+#### 5.2 Top-Down View & Dual Power Distribution
 ```
 +-----------------------------------------------------------+
 |                                                           |
 |             [ INSERT PHOTOGRAPH HERE:                     |
 |           Top-Down View of Electronics Deck               |
-|      Showing Arduino Shield Stacking, Motor Power Hub,    |
-|             USB Cabling, and Pi 5 Mounting]               |
+|      Showing Arduino Shield Stacking, Motor Battery Pack, |
+|    Mi 20,000mAh Pi Power Bank, and Pi 5 GPIO Pinouts]     |
 |                                                           |
 +-----------------------------------------------------------+
-Figure 2: Electronics Deck, Motor Shield Stacking, and Power Distribution
+Figure 2: Electronics Deck, Motor Shield Stacking, and Dual Power Isolation
 ```
 
-#### 5.3 Live Web HUD & Parking Test Bay Setup
+#### 5.3 Live Web HUD & Tabletop Demonstration Setup
 ```
 +-----------------------------------------------------------+
 |                                                           |
 |             [ INSERT PHOTOGRAPH HERE:                     |
-|           Test Parking Mat (Bays A1, A2, A3)              |
-|        with Vehicle Models and Operator Laptop HUD        |
-|      Displaying Live Augmented Video and Ticket Card]     |
+|      Test Parking Mat (White Paper with Marker Bays)      |
+|     Colored Vehicle Cards with License Plate Stickers     |
+|    Test Obstacle (Shoe Box / Bottle) in Front of Robot    |
+|   and Operator Laptop/Tablet HUD Displaying Live Feed]    |
 |                                                           |
 +-----------------------------------------------------------+
 Figure 3: Tabletop Parking Test Layout with Active Web HUD and Thermal Receipt Output
