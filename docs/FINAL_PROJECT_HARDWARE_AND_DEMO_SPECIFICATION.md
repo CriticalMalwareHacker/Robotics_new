@@ -39,14 +39,14 @@
 │  │  (USB 2.0 /dev/video1)  │    │  - HC-SR04 Sonar (GPIO 5/6)  │                  │                │
 │  │  Wide-angle mat view    │    │  - HW-201 IR Beam (GPIO 22)  │                  │                │
 │  └─────────────────────────┘    └──────────────────────────────┘                  │                │
-│                                                │ USB Serial (115200 baud)         │ Raw USB        │
+│                                                │ USB Serial (115200 baud)         │ Bluetooth RFCOMM
 └────────────────────────────────────────────────┼──────────────────────────────────┼────────────────┘
                                                  ▼                                  ▼
                          ┌───────────────────────────────────────┐  ┌────────────────────────────────┐
                          │       Arduino Uno R3 + Motor Shield   │  │  58 mm Thermal Receipt Printer │
                          │  [POWER: Dedicated Battery Pack]      │  │  (SHREYANS POSIFLOW 58D)       │
-                         │  - 4x TT Geared DC Motors (4WD)       │  └────────────────────────────────┘
-                         │  - Leased Watchdog Safety Timer       │
+                         │  - 4x TT Geared DC Motors (4WD)       │  │  - Wireless Bluetooth SPP      │
+                         │  - Leased Watchdog Safety Timer       │  └────────────────────────────────┘
                          └───────────────────────────────────────┘
 ```
 
@@ -187,11 +187,18 @@ To prevent runaway robot conditions caused by software crashes, network lag, or 
 
 ## 6. Onboard Thermal Citation Ticketing System
 
-### 6.1 Hardware Specifications
-- **Model:** SHREYANS POSIFLOW 58D (or Hoin 58 mm compatible).
+### 6.1 Hardware Specifications & Wireless Interface
+- **Model:** SHREYANS POSIFLOW 58D (or Hoin 58 mm compatible thermal receipt printer).
 - **Mechanism:** Direct-thermal line printing (no ink ribbons or toner cartridges required).
 - **Resolution:** 203 DPI (8 dots/mm, 384 dots per line).
-- **Interface:** Raw USB endpoint at `/dev/usb/lp0` (ESC/POS binary raster protocol).
+- **Wireless Interface:** **Bluetooth Wireless (RFCOMM / Serial Port Profile - SPP)**.
+  - Wirelessly paired to Raspberry Pi 5 onboard Bluetooth 5.0 controller.
+  - Exposed on Linux as `/dev/rfcomm0` character device node or directly communicated via Python `AF_BLUETOOTH` stream socket on RFCOMM channel 1.
+  - Protocol: Standard ESC/POS binary raster protocol (`GS v 0` command).
+- **Engineering Advantages of Wireless Bluetooth Printing:**
+  1. **Zero Cable Snagging:** Eliminates trailing or looping USB cables that could catch on wheels, snag on obstacles, or bind during $360^\circ$ skid-steer counter-rotating pivots.
+  2. **USB Bus Bandwidth Allocation:** Keeps the Raspberry Pi 5 USB 3.0/2.0 high-speed bus dedicated strictly to the Hikvision optical webcam video stream and Arduino serial interface without bus contention.
+  3. **Vibration Isolation:** Mechanically decouples printer paper-tearing tension and roll motor vibrations from the Raspberry Pi 5 compute board.
 
 ### 6.2 Citation Receipt Design & Scannable QR Code
 The citation receipt is dynamically compiled in memory as a 384 px wide monochrome bitmap:

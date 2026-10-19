@@ -41,12 +41,12 @@ To design, develop, and implement **ParkSensei**, an embedded smart parking enfo
    - **Optical Vision Sensor:** **Hikvision HD USB Webcam** (UVC compliant, wide-angle lens, angled forward-downward at the parking surface).
    - **Ultrasonic Rangefinder:** **HC-SR04 Ultrasonic Sensor** mounted ahead for mid/long-range collision detection (Pi GPIO5 Trigger, GPIO6 Echo stepped via 1 kΩ / 2 kΩ resistor voltage divider).
    - **Infrared Proximity Sensor:** **HW-201 Digital IR Sensor** mounted ahead for close-range front boundary detection (Pi GPIO22, active-low).
-7. **Thermal Citation Printer:** 58 mm Thermal Receipt Printer (POSIFLOW 58D / ESC/POS protocol, 203 DPI, 384 dots/line) printing official citations with high-contrast scannable QR verification codes.
+7. **Thermal Citation Printer:** 58 mm Thermal Receipt Printer (POSIFLOW 58D / ESC/POS protocol, 203 DPI, 384 dots/line) connected wirelessly to Raspberry Pi 5 via Bluetooth (RFCOMM / SPP), printing official citations with high-contrast scannable QR verification codes.
 8. **Demonstration & Testing Materials:**
    - **Scaled Parking Mat:** White paper surface with high-contrast black marker lines defining designated parking bays (`BAY-1`, `BAY-2`, `BAY-3`).
    - **Vehicle Scale Models:** Different colored rectangular cards (yellow, red, black, blue, green) and boxes, each affixed with real printed vehicle registration plate stickers (e.g. `MH EF 4752`, `MH01AB1234`).
    - **Obstacle Avoidance Test Objects:** Physical everyday obstacles (shoe boxes, bottles) placed in the robot's patrol corridor to test real-time ultrasonic/IR detection, reverse clearance, and escape pivots.
-9. **Interfacing & Cabling:** USB Type-A to Type-B Arduino cable, USB printer cable, sensor breadboard jumpers, resistor voltage divider network.
+9. **Interfacing & Cabling:** USB Type-A to Type-B Arduino cable, wireless Bluetooth interface for printer (cable-free operation preventing tangling during skid-steer turns), sensor breadboard jumpers, resistor voltage divider network.
 
 #### B. Software Tools & Frameworks
 1. **Operating System:** Raspberry Pi OS 64-bit (Debian Bookworm with Linux Kernel 6.6+)
@@ -82,7 +82,7 @@ The system follows a distributed master-slave embedded architecture:
 3. **On-Board Physical Ticketing with Scannable QR Verification:**
    - Once a violation is confirmed, the Pi rasterizes a standardized 384 px monochrome citation image containing the date, violation type, bay ID, license plate, and a high-contrast QR verification code.
    - **Real Scannable QR Code:** Scanning the bottom of the thermal receipt with any smartphone camera instantly directs the evaluator or driver to the digital evidence portal (`/history?ticket=<number>`).
-   - The rasterized image is converted into ESC/POS binary raster printer commands (`GS v 0`) and transmitted to the thermal printer via raw USB endpoint (`/dev/usb/lp0`).
+   - The rasterized image is converted into ESC/POS binary raster printer commands (`GS v 0`) and transmitted to the thermal printer wirelessly via Bluetooth RFCOMM socket (channel 1/2) or device node `/dev/rfcomm0`, eliminating trailing wires during robot maneuvering.
    - Simultaneously, an annotated photo evidence snapshot is generated—drawing bay bounds (red violation bay, green compliant bays), vehicle bounding quadrilateral, license plate badge, and cyber HUD telemetry banners—and persisted alongside the citation record in SQLite and JSON databases. Evaluators can review this evidence gallery at `/history`.
 
 ```
@@ -100,7 +100,7 @@ The system follows a distributed master-slave embedded architecture:
 │  - RapidOCR Plate Text Engine                          │
 │  - ESC/POS Thermal Label Formatter                     │
 └───────────────┬────────────────────────┬───────────────┘
-                │ Serial (115200 baud)   │ USB (/dev/usb/lp0)
+                │ Serial (115200 baud)   │ Bluetooth RFCOMM / SPP
                 ▼                        ▼
 ┌───────────────────────────────┐ ┌──────────────────────┐
 │     Arduino Uno + Shield      │ │ 58mm Thermal Printer │
@@ -137,8 +137,9 @@ The system follows a distributed master-slave embedded architecture:
    - **Custom Acrylic Case:** Encloses the top deck, left side, and right side to safeguard sensitive electronics and wiring harnesses against external interference.
    - **Open Front & Back Design:** Front is uncovered for unrestricted optical camera and ultrasonic/IR sensor sightlines; rear is uncovered for thermal paper ejection, cable access, and thermal ventilation.
 
-5. **SHREYANS POSIFLOW 58D Thermal Printer:**
+5. **SHREYANS POSIFLOW 58D Thermal Printer (Bluetooth Wireless Connection):**
    - High-reliability 58 mm direct-thermal mechanism requiring no ink or ribbon.
+   - Connected wirelessly to Raspberry Pi 5 via Bluetooth RFCOMM (Serial Port Profile - SPP), eliminating cable entanglement during 360° skid-steer turns and leaving Pi USB ports dedicated to the Hikvision HD webcam.
    - Uses Floyd-Steinberg dithering algorithms to generate crisp 1-bit monochrome graphics of parking notices and barcodes.
    - Prints a real, scannable QR verification code that resolves to the digital evidence gallery.
 

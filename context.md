@@ -190,7 +190,7 @@ The thermal citation receipt format features:
 - Ticket number, timestamp, and barcode graphics.
 - Boxed prominent license plate number (detected via RapidOCR or verified by operator).
 - Assigned bay ID, observed violation reason (e.g. `STRADDLING`, `WRONG_ORIENTATION`), and fine amount.
-- Direct-thermal ESC/POS raster print to `/dev/usb/lp0` or Bluetooth RFCOMM.
+- Direct-thermal ESC/POS raster print transmitted wirelessly via Bluetooth RFCOMM socket (channel 1/2) or `/dev/rfcomm0` (avoiding trailing cables during robot counter-rotation).
 
 ## Dynamic Computer Vision Pipeline
 

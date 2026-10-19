@@ -73,7 +73,7 @@ The system pairs a **Raspberry Pi 5** (hosting computer vision, plate OCR, and a
 │  │ (backend/services/    │   │   (app/api/robot_routes.py)   │   │   Printer Service      │ │
 │  │   parking/)           │   │                               │   │   (384 px ESC/POS)     │ │
 │  │ - Dynamic Line & Bay  │   │ - State Machine (Auto/Review) │   │ - Pillow Raster Layout │ │
-│  │ - Tight Quad Fitting  │   │ - Non-blocking Sensor Reader  │   │ - USB/BT /dev/usb/lp0  │ │
+│  │ - Tight Quad Fitting  │   │ - Non-blocking Sensor Reader  │   │ - Bluetooth RFCOMM/SPP │ │
 │  │ - RapidOCR ONNX Plate │   │ - Safety Timeout Leases       │   └───────────┬────────────┘ │
 │  └───────────▲───────────┘   └──────────────┬────────────────┘               │              │
 │              │                              │                                │              │
@@ -82,14 +82,14 @@ The system pairs a **Raspberry Pi 5** (hosting computer vision, plate OCR, and a
 │  │   video1)             │   │ - HC-SR04 Echo/Trig (GPIO 6/5)│               │              │
 │  │ 640x480 / 1280x720    │   │ - HW-201 IR (GPIO 22)         │               │              │
 │  └───────────────────────┘   └───────────────────────────────┘               │              │
-│                                             │ USB Serial (115200 baud)       │              │
+│                                             │ USB Serial (115200 baud)       │ Bluetooth    │
 └─────────────────────────────────────────────┼────────────────────────────────┼──────────────┘
                                               ▼                                ▼
                         ┌───────────────────────────────┐      ┌────────────────────────┐
                         │      Arduino Uno Controller   │      │ 58mm Thermal Printer   │
                         │ + Adafruit Motor Shield V1    │      │ (POSIFLOW 58D / Hoin)  │
-                        │ M1+M3: Left | M2+M4: Right    │      └────────────────────────┘
-                        └───────────────────────────────┘
+                        │ M1+M3: Left | M2+M4: Right    │      │ (Bluetooth Wireless)   │
+                        └───────────────────────────────┘      └────────────────────────┘
 ```
 
 ---
@@ -106,7 +106,7 @@ The system pairs a **Raspberry Pi 5** (hosting computer vision, plate OCR, and a
 | **Vision Sensor** | **Hikvision HD USB Webcam** | USB 2.0 / 3.0 | Real-time MJPEG feed at 640×480 or 1280×720 resolution mounted at front. |
 | **Ultrasonic Sensor**| HC-SR04 | Pi GPIO 5 (Trig), GPIO 6 (Echo) | Mounted ahead. **Requires voltage divider on Echo** (1 kΩ to GPIO 6, 2 kΩ to GND) to protect 3.3V Pi logic. |
 | **Infrared Sensor** | HW-201 Digital IR | Pi GPIO 22 (Out), 3.3V, GND | Mounted ahead. Active-low binary proximity sensor for close-range front obstacles. |
-| **Citation Printer** | SHREYANS POSIFLOW 58D | USB `/dev/usb/lp0` / BT | Direct-thermal 203 DPI, 384 dots wide, ESC/POS raster output with scannable QR verification code. |
+| **Citation Printer** | SHREYANS POSIFLOW 58D | **Bluetooth Wireless** (RFCOMM/SPP) | Direct-thermal 203 DPI, 384 dots wide, ESC/POS raster output with scannable QR verification code. Wirelessly connected to Pi 5 to prevent cable tangling during skid-steer turns. |
 | **Demo Apparatus** | White Paper Mat & Cards | Tabletop / Floor setup | White paper with drawn marker bays, colored vehicle cards with plate stickers, and test obstacles (shoe box, bottle). |
 
 ---

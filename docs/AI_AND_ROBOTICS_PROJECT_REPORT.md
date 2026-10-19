@@ -75,7 +75,7 @@ This project presents **ParkSensei**, an autonomous edge-computing mobile roboti
 
 Perception is delivered through a front-mounted tri-sensor array consisting of a **Hikvision HD USB webcam**, an **HC-SR04 ultrasonic rangefinder** with safe resistive voltage stepping, and an **HW-201 active-low infrared (IR) proximity sensor**. Power delivery is decoupled into dual isolated supplies: a **Mi 20,000mAh Power Bank** supplies clean 5V USB-C Power Delivery to the Pi 5 compute engine, while a dedicated high-discharge external **Battery Pack** powers the DC motors, delivering high torque and rapid travel speeds while eliminating electrical brownouts. 
 
-The onboard vision pipeline dynamically detects marker divider lines on a parking mat, isolates multi-colored vehicle card models, fits perspective-accurate convex quadrilaterals, detects parking infractions (`STRADDLING`, `WRONG_ORIENTATION`, `OUTSIDE_SLOT`), extracts license plate strings offline, and commands an onboard **58 mm POSIFLOW thermal receipt printer** to output official citations featuring **scannable QR verification codes** that link directly to a digital photographic evidence gallery. Experimental evaluation across diverse test configurations demonstrated **95.8% violation detection accuracy**, sub-second OCR inference latency (avg. 680 ms), reliable obstacle collision avoidance at a calibrated $\le 18$ cm safety threshold, and 100% fail-safe motor lease watchdog enforcement.
+The onboard vision pipeline dynamically detects marker divider lines on a parking mat, isolates multi-colored vehicle card models, fits perspective-accurate convex quadrilaterals, detects parking infractions (`STRADDLING`, `WRONG_ORIENTATION`, `OUTSIDE_SLOT`), extracts license plate strings offline, and commands an onboard **58 mm POSIFLOW thermal receipt printer (wirelessly paired via Bluetooth RFCOMM / SPP)** to output official citations featuring **scannable QR verification codes** that link directly to a digital photographic evidence gallery. Experimental evaluation across diverse test configurations demonstrated **95.8% violation detection accuracy**, sub-second OCR inference latency (avg. 680 ms), reliable obstacle collision avoidance at a calibrated $\le 18$ cm safety threshold, and 100% fail-safe motor lease watchdog enforcement.
 
 **Keywords:** Artificial Intelligence, Autonomous Mobile Robots, Edge Computing, Computer Vision, RapidOCR, Skid-Steer Navigation, Embedded Systems, Thermal Receipt Enforcement.
 
@@ -232,13 +232,13 @@ There is a clear engineering requirement for a self-contained, low-cost mobile r
 3. **To formulate spatial infraction classification algorithms:** Accurately categorize vehicle status into `LEGAL`, `STRADDLING`, `WRONG_ORIENTATION` ($>25^\circ$), and `OUTSIDE_SLOT` using vector geometry and contour overlap analysis.
 4. **To integrate an offline License Plate Recognition (LPR) engine:** Deploy RapidOCR via ONNX Runtime to extract alphanumeric registration strings locally within 1.0 second without internet connectivity.
 5. **To construct a non-blocking obstacle avoidance system:** Implement dual-sensor ultrasonic (HC-SR04) and infrared (HW-201) polling to stop and execute clearance maneuvers at a safety threshold of $\le 18$ cm.
-6. **To engineer an onboard physical ticketing system:** Integrate a 58 mm thermal receipt printer generating official citation receipts embedded with smartphone-scannable QR verification codes linking directly to a digital photo evidence gallery.
+6. **To engineer an onboard physical ticketing system:** Integrate a 58 mm thermal receipt printer (connected wirelessly via Bluetooth RFCOMM) generating official citation receipts embedded with smartphone-scannable QR verification codes linking directly to a digital photo evidence gallery.
 7. **To deploy a cyber-tactical web Heads-Up Display (HUD):** Host an asynchronous FastAPI and React web portal allowing remote teleoperation, sensor telemetry dials, live camera streaming, and a human-in-the-loop review gate.
 
 ### 1.4 Scope of the Project
 - **Target Environment:** Indoor and semi-indoor parking garages, tabletop miniature evaluation layouts, and pedestrian-grade roadways with flat surfaces.
 - **Perception Scope:** Camera vision optimized for high-contrast ground markings (e.g., black divider lines on white/light surfaces) and standardized rectangular vehicular forms.
-- **Hardware Inclusions:** Raspberry Pi 5 (8 GB), Arduino Uno R3, Adafruit Motor Shield V1, 4 × TT geared DC motors, Hikvision HD USB webcam, HC-SR04 sonar, HW-201 IR sensor, POSIFLOW 58D thermal printer, Mi 20,000mAh power bank, external motor battery pack.
+- **Hardware Inclusions:** Raspberry Pi 5 (8 GB), Arduino Uno R3, Adafruit Motor Shield V1, 4 × TT geared DC motors, Hikvision HD USB webcam, HC-SR04 sonar, HW-201 IR sensor, POSIFLOW 58D thermal printer (Bluetooth wireless), Mi 20,000mAh power bank, external motor battery pack.
 - **Exclusions:** Full-scale automotive drive-by towing, high-speed outdoor GPS road navigation, and wet/muddy off-road terrain traversal.
 
 ### 1.5 Significance and Applications
@@ -327,7 +327,7 @@ ParkSensei bridges this gap by introducing an end-to-end edge-AI robotic vehicle
 | **Hardware** | Camera | Hikvision HD USB Webcam (UVC Compliant) | Optical parking scene capture |
 | **Hardware** | Ultrasonic Sensor | HC-SR04 (40 kHz, 2 cm – 400 cm) | Forward obstacle rangefinder |
 | **Hardware** | Infrared Sensor | HW-201 Digital Proximity IR (Active-Low) | Close-proximity ground safety beam |
-| **Hardware** | Thermal Printer | POSIFLOW 58D (Direct Thermal, 203 DPI, 384 dots) | On-the-spot citation printing |
+| **Hardware** | Thermal Printer | POSIFLOW 58D (Direct Thermal, 203 DPI, 384 dots) | On-the-spot citation printing via Bluetooth wireless SPP |
 | **Hardware** | Power Bank | Mi 20,000mAh Power Bank (5V/3A–5A USB-C PD) | Raspberry Pi 5 logic power |
 | **Hardware** | Battery Pack | External High-Discharge DC Battery Pack | Motor driver shield `EXT_PWR` |
 | **Hardware** | Enclosure | Custom Acrylic Enclosure (Top, Left, Right closed) | Electronics protection & ventilation |
@@ -367,15 +367,15 @@ ParkSensei bridges this gap by introducing an end-to-end edge-AI robotic vehicle
 |  │            THERMAL TICKET GENERATOR            │  │         DATABASE & EVIDENCE VAULT        │  │
 |  │  - 384 px ESC/POS Monochrome Raster Layout     │  │  - SQLite Database (`ticket_records`)    │  │
 |  │  - Embedded Scannable QR Verification Code     │  │  - JPEG Photographic Evidence Storage    │  │
-|  │  - Direct USB Printing (`/dev/usb/lp0`)        │  │  - Digital Verification Portal (/history)│  │
+|  │  - Bluetooth Wireless Printing (RFCOMM SPP)   │  │  - Digital Verification Portal (/history)│  │
 |  └────────────────────────────────────────────────┘  └──────────────────────────────────────────┘  │
 +----------------------------------┬----------------------------------------┬------------------------+
-                                   │ USB Serial (115200 baud)               │ USB Cable
+                                   │ USB Serial (115200 baud)               │ Bluetooth Wireless (RFCOMM)
                                    ▼                                        ▼
 +------------------------------------------------------+  +------------------------------------------+
 |            ARDUINO UNO R3 + MOTOR SHIELD             |  |      SHREYANS POSIFLOW 58D PRINTER       |
 |  - 4WD Skid-Steer Motor Control (M1..M4)             |  |  - Direct Thermal Receipt Printing       |
-|  - 100-500 ms Watchdog Safety Lease Timer            |  |  - Physical Citation Ticket Dispenser    |
+|  - 100-500 ms Watchdog Safety Lease Timer            |  |  - Wireless Bluetooth SPP Interface      |
 |  - Emergency Stop Hardware Latch                     |  +------------------------------------------+
 +------------------------------------------------------+
 ```
@@ -542,7 +542,7 @@ When a violation is flagged, the vehicle quadrilateral is cropped and normalized
 | **Hikvision Webcam** | Optical vision sensor | USB 2.0 port | Mounted at front center; unobstructed sightline. |
 | **HC-SR04 Sonar** | Distance rangefinder | GPIO 5 (Trig), GPIO 6 (Echo) | **1 kΩ / 2 kΩ divider** steps 5V echo to safe 3.3V logic. |
 | **HW-201 IR Sensor**| Close-range proximity beam | GPIO 22 (Out, active-low), 3.3V, GND | Ground-clearance object detection. |
-| **POSIFLOW 58D** | Physical thermal ticket dispenser | Direct USB `/dev/usb/lp0` | Unobstructed rear exit path through open chassis back. |
+| **POSIFLOW 58D** | Physical thermal ticket dispenser | **Wireless Bluetooth (RFCOMM /dev/rfcomm0)** | Eliminates trailing wires; rear exit path through open chassis back. |
 | **Acrylic Enclosure**| Mechanical protection & ventilation | 3-sided (Top, Left, Right closed) | Front open for sensors; Rear open for printer/exhaust. |
 
 ### 4.6 Integration and Implementation
@@ -566,7 +566,7 @@ When a violation is flagged, the vehicle quadrilateral is cropped and normalized
 ### 5.1 Testing Strategy
 Testing encompassed four structured verification phases:
 1. **Unit Testing:** Deterministic validation of geometric algorithms (`tests/test_parking_geometry.py`), OCR text parsing (`tests/test_plate_reader.py`), and printer ESC/POS raster formatting (`tests/test_printer.py`).
-2. **Hardware Integration Testing:** Validation of Arduino serial lease timeouts, GPIO ultrasonic voltage divider safety, and thermal printer USB data piping.
+2. **Hardware Integration Testing:** Validation of Arduino serial lease timeouts, GPIO ultrasonic voltage divider safety, and thermal printer Bluetooth RFCOMM wireless packet streaming.
 3. **System-Level Evaluation:** Autonomous patrol runs on physical paper parking mats under diverse vehicle placements (legal, straddling, wrong angle, outside slot).
 4. **Stress & Fault Injection Testing:** Evaluation under sensor disconnections, camera occlusion, obstacle traps, and manual E-stop triggers.
 
